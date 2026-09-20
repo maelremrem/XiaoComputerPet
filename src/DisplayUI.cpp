@@ -701,7 +701,7 @@ void DisplayUI::renderPet(PetMood mood, uint32_t now, float effectProgress, uint
 void DisplayUI::renderPomodoroReady(uint8_t timerMode, uint8_t previousTimerMode,
                                      uint16_t minutes, uint16_t previousMinutes,
                                      float modeTransition, int8_t modeDirection,
-                                     float temperatureC, float pressureHpa, bool ambientAvailable, uint32_t now) {
+                                     uint32_t focusSessions, uint8_t sessionsBeforeLongBreak, uint32_t now) {
   display_.clearDisplay();
   display_.setTextSize(1);
   timerInitialized_ = false; // Running timer starts clean after the READY screen.
@@ -713,13 +713,7 @@ void DisplayUI::renderPomodoroReady(uint8_t timerMode, uint8_t previousTimerMode
     snprintf(out, outLen, "%02lu:00", static_cast<unsigned long>(mins));
   };
 
-  if (ambientAvailable && isfinite(temperatureC) && isfinite(pressureHpa)) {
-    char ambient[20];
-    snprintf(ambient, sizeof(ambient), "%.0fC %.0fhPa", temperatureC, pressureHpa);
-    const int16_t x = 127 - static_cast<int16_t>(strlen(ambient) * 6);
-    display_.setCursor(x > 40 ? x : 40, 3);
-    display_.print(ambient);
-  }
+  drawFocusCycleDots(focusSessions, sessionsBeforeLongBreak, timerMode);
 
   modeTransition = constrain(modeTransition, 0.0f, 1.0f);
   const float e = easeOutCubic(modeTransition);
@@ -761,6 +755,28 @@ void DisplayUI::renderPomodoroReady(uint8_t timerMode, uint8_t previousTimerMode
 }
 
 
+
+void DisplayUI::drawFocusCycleDots(uint32_t focusSessions, uint8_t sessionsBeforeLongBreak, uint8_t timerMode) {
+  const uint8_t total = constrain(sessionsBeforeLongBreak, static_cast<uint8_t>(1), static_cast<uint8_t>(12));
+  uint8_t filled = static_cast<uint8_t>(focusSessions % total);
+
+  // A long break represents the completed cycle, so keep every dot filled
+  // instead of immediately wrapping the visual counter back to zero.
+  if (timerMode == 2 && focusSessions > 0 && filled == 0) filled = total;
+
+  constexpr int16_t radius = 2;
+  constexpr int16_t step = 6;
+  constexpr int16_t lastCenterX = 124;
+  constexpr int16_t centerY = 6;
+  const int16_t firstCenterX = lastCenterX - static_cast<int16_t>(total - 1) * step;
+
+  for (uint8_t i = 0; i < total; ++i) {
+    const int16_t x = firstCenterX + static_cast<int16_t>(i) * step;
+    if (i < filled) display_.fillCircle(x, centerY, radius, OLED_WHITE);
+    else display_.drawCircle(x, centerY, radius, OLED_WHITE);
+  }
+}
+
 void DisplayUI::drawFocusCompanion(float progress, bool paused, uint8_t timerMode, uint32_t remainingMs, uint32_t now) {
   progress = constrain(progress, 0.0f, 1.0f);
   int16_t leftX = 56;
@@ -796,7 +812,7 @@ void DisplayUI::drawPomodoroPet(float progress, bool paused, uint8_t timerMode, 
   PetExpression expr = resolvePetExpression(petMood, now, 0.5f);
   const float scale = layout == 0 ? 0.43f : 0.38f;
   const int16_t centerX = layout == 0 ? 64 : 28;
-  const int16_t centerY = layout == 0 ? 22 : 31;
+  const int16_t centerY = layout == 0 ? 25 : 34;
   const int16_t separation = static_cast<int16_t>((skin.rightX - skin.leftX) * scale);
   const int16_t leftX = centerX - separation / 2;
   const int16_t rightX = centerX + separation / 2;
@@ -821,21 +837,15 @@ void DisplayUI::drawPomodoroPet(float progress, bool paused, uint8_t timerMode, 
 }
 
 void DisplayUI::renderPomodoro(uint32_t remainingMs, uint32_t totalMs, bool paused, uint8_t timerMode,
-                                float temperatureC, float pressureHpa, bool ambientAvailable,
-                                bool focusCompanion, uint8_t timerCompanionLayout, uint8_t personality, uint32_t now) {
+                                bool focusCompanion, uint8_t timerCompanionLayout, uint8_t personality,
+                                uint32_t focusSessions, uint8_t sessionsBeforeLongBreak, uint32_t now) {
   display_.clearDisplay();
   display_.setTextSize(1);
   const bool isBreak = timerMode != 0;
   const char* label = timerMode == 0 ? "FOCUS" : (timerMode == 1 ? "SHORT" : "LONG");
   display_.setCursor(5, 3);
   display_.print(label);
-  if (ambientAvailable && isfinite(temperatureC) && isfinite(pressureHpa)) {
-    char ambient[20];
-    snprintf(ambient, sizeof(ambient), "%.0fC %.0fhPa", temperatureC, pressureHpa);
-    const int16_t x = 127 - static_cast<int16_t>(strlen(ambient) * 6);
-    display_.setCursor(x > 40 ? x : 40, 3);
-    display_.print(ambient);
-  }
+  drawFocusCycleDots(focusSessions, sessionsBeforeLongBreak, timerMode);
 
   const uint32_t totalSeconds = (remainingMs + 999) / 1000;
   if (!timerInitialized_) {

@@ -44,10 +44,10 @@ class DisplayUI {
   void renderPomodoroReady(uint8_t timerMode, uint8_t previousTimerMode,
                             uint16_t minutes, uint16_t previousMinutes,
                             float modeTransition, int8_t modeDirection,
-                            float temperatureC, float pressureHpa, bool ambientAvailable, uint32_t now);
+                            uint32_t focusSessions, uint8_t sessionsBeforeLongBreak, uint32_t now);
   void renderPomodoro(uint32_t remainingMs, uint32_t totalMs, bool paused, uint8_t timerMode,
-                       float temperatureC, float pressureHpa, bool ambientAvailable,
-                       bool focusCompanion, uint8_t timerCompanionLayout, uint8_t personality, uint32_t now);
+                       bool focusCompanion, uint8_t timerCompanionLayout, uint8_t personality,
+                       uint32_t focusSessions, uint8_t sessionsBeforeLongBreak, uint32_t now);
   void renderStats(const PetState& state);
   void renderPetMenu(PetMenuView view, uint8_t index, uint8_t previousIndex, float transition,
                      int8_t direction, uint32_t now, const PetState& state,
@@ -75,6 +75,7 @@ class DisplayUI {
   void drawSpeechBubble(const char* text, float progress);
   void drawSleepZzz(uint32_t now);
   void drawFocusCompanion(float progress, bool paused, uint8_t timerMode, uint32_t remainingMs, uint32_t now);
+  void drawFocusCycleDots(uint32_t focusSessions, uint8_t sessionsBeforeLongBreak, uint8_t timerMode);
   void drawPomodoroPet(float progress, bool paused, uint8_t timerMode, uint8_t personality, uint8_t layout, uint32_t now);
   void presentIfChanged(bool force = false);
   void drawTimerLayer(const char* text, int16_t y, uint8_t alphaStep, int16_t xOffset = 0);

@@ -43,7 +43,7 @@ namespace app {
 constexpr char DEVICE_NAME[] = "XIAO Computer Pet";
 constexpr char CONFIG_FILE[] = "/pet_config.json";
 constexpr char STATE_FILE[] = "/pet_state.json";
-constexpr uint16_t CONFIG_VERSION = 12;
+constexpr uint16_t CONFIG_VERSION = 13;
 constexpr uint32_t SERIAL_BAUD = 115200;
 constexpr uint16_t STATUS_SCREEN_MS = 2600;
 constexpr uint32_t NEEDS_TICK_MS = 60000;

@@ -440,11 +440,11 @@ $('motionSensitivity').addEventListener('input', syncOutputs);
 $('personality').addEventListener('change', updatePreview);
 
 const PRESETS = {
-  calm: {animationFps:30, idleAnimationSpeed:75, eyeFollowStrength:80, inertiaStrength:70, squashStrength:55, heartParticleCount:6, rareEventsEnabled:true, speechEventChance:35, focusCompanionEnabled:true},
-  expressive: {animationFps:40, idleAnimationSpeed:115, eyeFollowStrength:115, inertiaStrength:110, squashStrength:110, heartParticleCount:12, rareEventsEnabled:true, speechEventChance:70, focusCompanionEnabled:true},
-  cartoon: {animationFps:50, idleAnimationSpeed:125, eyeFollowStrength:120, inertiaStrength:140, squashStrength:140, heartParticleCount:16, rareEventsEnabled:true, speechEventChance:65, focusCompanionEnabled:true},
-  minimal: {animationFps:30, idleAnimationSpeed:70, eyeFollowStrength:70, inertiaStrength:60, squashStrength:35, heartParticleCount:3, rareEventsEnabled:false, speechEventChance:20, focusCompanionEnabled:false},
-  focus: {animationFps:30, idleAnimationSpeed:65, eyeFollowStrength:75, inertiaStrength:65, squashStrength:45, heartParticleCount:5, rareEventsEnabled:false, speechEventChance:25, focusCompanionEnabled:true}
+  calm: {animationFps:30, idleAnimationSpeed:75, eyeFollowStrength:80, inertiaStrength:70, squashStrength:55, heartParticleCount:6, rareEventsEnabled:true, speechEventChance:25, focusCompanionEnabled:true},
+  expressive: {animationFps:40, idleAnimationSpeed:115, eyeFollowStrength:115, inertiaStrength:110, squashStrength:110, heartParticleCount:12, rareEventsEnabled:true, speechEventChance:55, focusCompanionEnabled:true},
+  cartoon: {animationFps:50, idleAnimationSpeed:125, eyeFollowStrength:120, inertiaStrength:140, squashStrength:140, heartParticleCount:16, rareEventsEnabled:true, speechEventChance:50, focusCompanionEnabled:true},
+  minimal: {animationFps:30, idleAnimationSpeed:70, eyeFollowStrength:70, inertiaStrength:60, squashStrength:35, heartParticleCount:3, rareEventsEnabled:false, speechEventChance:10, focusCompanionEnabled:false},
+  focus: {animationFps:30, idleAnimationSpeed:65, eyeFollowStrength:75, inertiaStrength:65, squashStrength:45, heartParticleCount:5, rareEventsEnabled:false, speechEventChance:15, focusCompanionEnabled:true}
 };
 
 document.querySelectorAll('[data-preset]').forEach(button => {

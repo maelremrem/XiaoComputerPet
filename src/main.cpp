@@ -67,8 +67,11 @@ uint16_t speechDuration = 5400;
 char speechText[20] = {};
 SpeechContext pendingSpeechContext = SpeechContext::None;
 uint32_t pendingSpeechAt = 0;
+uint32_t pendingSpeechExpiresAt = 0;
 bool pendingSpeechForce = false;
 uint32_t speechCooldownUntil = 0;
+constexpr uint32_t SPEECH_PENDING_LIFETIME_MS = 4000UL;
+constexpr uint32_t SPEECH_COOLDOWN_AFTER_MS = 25000UL;
 uint32_t bootStartedAt = 0;
 bool bootGreetingDone = false;
 bool previousSleepState = false;
@@ -266,11 +269,34 @@ const char* chooseSpeech(SpeechContext context) {
   return lines[random(0, static_cast<long>(count))];
 }
 
+uint8_t speechContextChance(SpeechContext context) {
+  switch (context) {
+    case SpeechContext::Boot:      return 100; // Only once per boot.
+    case SpeechContext::Pet:       return 40;
+    case SpeechContext::Pickup:    return 22;
+    case SpeechContext::Settled:   return 18;
+    case SpeechContext::Shake:     return 30;
+    case SpeechContext::FocusDone: return 70;
+    case SpeechContext::BreakDone: return 45;
+    case SpeechContext::Sleep:     return 25;
+    case SpeechContext::Wake:      return 30;
+    default:                       return 0;
+  }
+}
+
+void clearPendingSpeech() {
+  pendingSpeechContext = SpeechContext::None;
+  pendingSpeechAt = 0;
+  pendingSpeechExpiresAt = 0;
+  pendingSpeechForce = false;
+}
+
 void queueSpeech(SpeechContext context, uint32_t at, bool force = false) {
   if (!settings.speechBubblesEnabled || context == SpeechContext::None) return;
   if (pendingSpeechContext != SpeechContext::None && pendingSpeechForce && !force) return;
   pendingSpeechContext = context;
   pendingSpeechAt = at;
+  pendingSpeechExpiresAt = at + SPEECH_PENDING_LIFETIME_MS;
   pendingSpeechForce = force;
 }
 
@@ -285,19 +311,37 @@ void updateSpeech(uint32_t now) {
   if (speechActive && (now - speechStarted) >= speechDuration) {
     speechActive = false;
     speechText[0] = '\0';
-    speechCooldownUntil = now + 1200UL;
+    // The current bubble already stays visible for ~5-6 s. Adding this pause
+    // keeps normal contextual speech to roughly one bubble every 30 s max.
+    speechCooldownUntil = now + SPEECH_COOLDOWN_AFTER_MS;
   }
 
-  if (pendingSpeechContext == SpeechContext::None ||
-      static_cast<int32_t>(now - pendingSpeechAt) < 0 ||
-      !canStartSpeech(now)) {
+  if (pendingSpeechContext == SpeechContext::None) return;
+
+  if (static_cast<int32_t>(now - pendingSpeechExpiresAt) >= 0) {
+    clearPendingSpeech();
     return;
   }
 
-  const bool allowed = pendingSpeechForce || random(0, 100) < settings.speechEventChance;
+  if (static_cast<int32_t>(now - pendingSpeechAt) < 0) return;
+
+  // Do not let a stale interaction wait through the cooldown and suddenly
+  // speak many seconds after the action that caused it. Forced boot speech is
+  // the only event allowed to wait for the cooldown.
+  if (static_cast<int32_t>(now - speechCooldownUntil) < 0 && !pendingSpeechForce) {
+    clearPendingSpeech();
+    return;
+  }
+
+  if (!canStartSpeech(now)) return;
+
   const SpeechContext context = pendingSpeechContext;
-  pendingSpeechContext = SpeechContext::None;
-  pendingSpeechForce = false;
+  const bool force = pendingSpeechForce;
+  clearPendingSpeech();
+
+  const uint16_t effectiveChance = static_cast<uint16_t>(settings.speechEventChance) *
+                                   static_cast<uint16_t>(speechContextChance(context)) / 100U;
+  const bool allowed = force || random(0, 100) < effectiveChance;
   if (!allowed) return;
 
   const char* text = chooseSpeech(context);
@@ -983,7 +1027,7 @@ void loop() {
 
   const bool sleepingNow = isSleepWindow(now);
   if (clockValid && sleepingNow != previousSleepState) {
-    queueSpeech(sleepingNow ? SpeechContext::Sleep : SpeechContext::Wake, now + 120UL, true);
+    queueSpeech(sleepingNow ? SpeechContext::Sleep : SpeechContext::Wake, now + 120UL);
     previousSleepState = sleepingNow;
   }
   if (!bootGreetingDone && !sleepingNow && (now - bootStartedAt) >= 15000UL) {
@@ -1132,7 +1176,7 @@ void loop() {
       interaction = Interaction::None;
       mood = PetMood::Idle;
       if (finishedInteraction == Interaction::Pet) {
-        queueSpeech(SpeechContext::Pet, now + 100UL, true);
+        queueSpeech(SpeechContext::Pet, now + 100UL);
       }
     }
 
@@ -1180,7 +1224,7 @@ void loop() {
         enterPomodoroReady(longBreak ? TimerMode::LongBreak : TimerMode::ShortBreak, now);
       } else {
         returnToPet(now, celebrationWasBreak ? PetMood::Idle : PetMood::Done);
-        queueSpeech(celebrationWasBreak ? SpeechContext::BreakDone : SpeechContext::FocusDone, now + 500UL, true);
+        queueSpeech(celebrationWasBreak ? SpeechContext::BreakDone : SpeechContext::FocusDone, now + 500UL);
       }
     } else if (!buzzer.isPlaying() && (now - celebrationStarted) > 1300) {
       if (!celebrationWasBreak && settings.autoBreak) {
@@ -1188,7 +1232,7 @@ void loop() {
         enterPomodoroReady(longBreak ? TimerMode::LongBreak : TimerMode::ShortBreak, now);
       } else {
         returnToPet(now, celebrationWasBreak ? PetMood::Idle : PetMood::Done);
-        queueSpeech(celebrationWasBreak ? SpeechContext::BreakDone : SpeechContext::FocusDone, now + 500UL, true);
+        queueSpeech(celebrationWasBreak ? SpeechContext::BreakDone : SpeechContext::FocusDone, now + 500UL);
       }
     }
   }
@@ -1303,9 +1347,8 @@ void loop() {
         timerModeMinutes(previousTimerMode),
         modeTransition,
         timerModeDirection,
-        sensorData.temperatureC,
-        sensorData.pressureHpa,
-        sensorData.bmpAvailable,
+        petState.focusSessions,
+        settings.sessionsBeforeLongBreak,
         now
       );
     } else if (mode == AppMode::Pomodoro) {
@@ -1314,12 +1357,11 @@ void loop() {
         pomodoro.totalMs(),
         pomodoro.paused(),
         static_cast<uint8_t>(selectedTimerMode),
-        sensorData.temperatureC,
-        sensorData.pressureHpa,
-        sensorData.bmpAvailable,
         settings.focusCompanionEnabled,
         settings.timerCompanionLayout,
         settings.personality,
+        petState.focusSessions,
+        settings.sessionsBeforeLongBreak,
         now
       );
     } else if (mode == AppMode::PetMenu) {

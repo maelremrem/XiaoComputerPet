@@ -20,4 +20,4 @@ Contexts currently include:
 - focus / break completion;
 - sleep / wake transitions.
 
-The Web BLE option `Speech bubbles` disables the complete feature. `Context text chance` controls non-forced contextual lines. Ambient idle events are deliberately silent so the companion never asks for attention. Boot, petting, focus-completion and sleep/wake messages remain available when speech is enabled, while their exact wording varies.
+The Web BLE option `Speech bubbles` disables the complete feature. `Context text frequency` is a master probability multiplied by a per-context probability. Normal bubbles also have an approximately 30-second minimum gap, and stale queued lines expire instead of appearing late. Ambient idle events are deliberately silent so the companion never asks for attention. Boot, petting, focus-completion and sleep/wake messages remain available when speech is enabled, while their exact wording varies.

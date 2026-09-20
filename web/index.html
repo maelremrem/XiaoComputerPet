@@ -126,7 +126,7 @@
           <label>Rare event min <span>sec</span><input id="rareEventMinSeconds" type="number" min="20" max="1800" value="90"></label>
           <label>Rare event max <span>sec</span><input id="rareEventMaxSeconds" type="number" min="20" max="3600" value="240"></label>
         </div>
-        <label>Context text chance <output id="speechEventChanceOut">60%</output><input id="speechEventChance" type="range" min="0" max="100" step="5" value="60"></label>
+        <label>Context text frequency <output id="speechEventChanceOut">45%</output><input id="speechEventChance" type="range" min="0" max="100" step="5" value="45"></label>
         <label>Speech pack
           <select id="speechPack">
             <option value="0">Neutral</option>
@@ -140,7 +140,7 @@
           <label>Custom greeting <span>2 words max</span><input id="customBootText" type="text" maxlength="19" value="Hello!"></label>
           <label>Custom pet reply <span>2 words max</span><input id="customPetText" type="text" maxlength="19" value="Happy Happy"></label>
         </div>
-        <p class="micro">Speech is limited to two words. Ambient idle animations stay silent and never ask for attention; contextual bubbles only react to meaningful events.</p>
+        <p class="micro">Speech is limited to two words. The frequency slider is a master limit: each context has an additional probability and bubbles have a ~30 s global cooldown, so they do not appear after every interaction.</p>
         <p class="micro">Hold a side = scratch · sweep left/right = pet · both sides = hug. Ambient animations include silent yawns, sneezes, hiccups, dreams and tiny dances.</p>
       </article>
 

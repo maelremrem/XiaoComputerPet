@@ -1,5 +1,21 @@
 # Changelog
 
+## 5.0.3
+
+- Made speech bubbles substantially less frequent and non-deterministic for repeated interactions.
+- Added per-context speech probabilities on top of the existing master frequency setting.
+- Added an approximately 30-second minimum gap between normal bubbles (display duration + cooldown).
+- Petting, sleep/wake and Pomodoro completion no longer force a bubble every time; the one-time boot greeting remains guaranteed when enabled.
+- Pending speech now expires quickly so a stale message cannot appear long after the event that caused it.
+- Reduced fresh-install speech frequency default and updated Web BLE presets accordingly.
+
+## 5.0.2
+
+- Moved the Pomodoro companion face down by 3 px in both companion layouts.
+- Removed temperature and atmospheric pressure from the OLED Pomodoro header.
+- Added compact filled/empty focus-cycle dots based on `sessionsBeforeLongBreak`.
+- Long-break mode keeps a completed focus cycle fully filled before the visual counter wraps for the next cycle.
+
 ## 5.0.1
 
 - Fixed `BehaviorEvent` construction for the GCC/C++ mode used by the Seeed nRF52840 Arduino toolchain.

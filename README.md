@@ -13,7 +13,7 @@ The pet is intentionally non-demanding: it reacts to you and its environment, bu
 - BMP180 temperature and pressure telemetry.
 - Top-button petting with heart eyes and heart particles.
 - Side-touch gestures: look, scratch, swipe and hug.
-- Speech bubbles with 1–2 word messages, multiple phrase packs and two custom phrases.
+- Speech bubbles with 1–2 word messages, multiple phrase packs, per-context rarity and a global anti-spam cooldown.
 - Sleep schedule plus optional non-intrusive micro-sleep.
 - Pomodoro modes: Focus, Short Break and Long Break.
 - Pomodoro companion layouts:

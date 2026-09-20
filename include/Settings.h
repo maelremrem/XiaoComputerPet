@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 struct Settings {
-  uint16_t version = 12;
+  uint16_t version = 13;
 
   uint16_t focusMinutes = 25;
   uint16_t breakMinutes = 5;
@@ -44,7 +44,7 @@ struct Settings {
   char customBootText[20] = "Hello!";
   char customPetText[20] = "Happy Happy";
   bool speechBubblesEnabled = true;
-  uint8_t speechEventChance = 60; // 0..100, contextual text chance. Boot greeting ignores this.
+  uint8_t speechEventChance = 45; // 0..100, master speech frequency. Each context applies an additional probability.
   uint16_t rareEventMinSeconds = 90;
   uint16_t rareEventMaxSeconds = 240;
   uint8_t idleAnimationSpeed = 100; // 50..150%
