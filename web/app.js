@@ -11,9 +11,11 @@ const numberIds = [
   'faceMinSeconds','faceMaxSeconds','animationFps','longPressMs','doubleClickMs',
   'petAnimationMs','oledContrast','idleDimSeconds','petSound','doneMelody','breakMelody',
   'personality','accessoryMode','sleepStartHour','sleepEndHour','mpuMountRotation','motionSensitivity',
-  'rareEventMinSeconds','rareEventMaxSeconds','idleAnimationSpeed','eyeFollowStrength','inertiaStrength','squashStrength','heartParticleCount','speechEventChance'
+  'rareEventMinSeconds','rareEventMaxSeconds','idleAnimationSpeed','eyeFollowStrength','inertiaStrength','squashStrength','heartParticleCount','speechEventChance',
+  'timerCompanionLayout','microSleepSeconds','speechPack'
 ];
-const boolIds = ['autoBreak','soundEnabled','deskBuddyEnabled','touchReactionsEnabled','motionReactionsEnabled','environmentReactionsEnabled','advancedTouchEnabled','rareEventsEnabled','focusCompanionEnabled','speechBubblesEnabled','swapTouchButtons','sleepEnabled','screenFlipped'];
+const stringIds = ['customBootText','customPetText'];
+const boolIds = ['autoBreak','soundEnabled','deskBuddyEnabled','touchReactionsEnabled','motionReactionsEnabled','environmentReactionsEnabled','advancedTouchEnabled','rareEventsEnabled','focusCompanionEnabled','speechBubblesEnabled','swapTouchButtons','sleepEnabled','screenFlipped','microSleepEnabled','skinPersonalityEnabled','bootAnimationEnabled'];
 
 function bluetoothApiAvailable() {
   return typeof navigator !== 'undefined' && !!navigator.bluetooth && typeof navigator.bluetooth.requestDevice === 'function';
@@ -80,20 +82,27 @@ async function initBluetoothSupport() {
 function setConnected(ok, message = ok ? 'Connected' : 'Disconnected') {
   $('status').className = `status ${ok ? 'online' : 'offline'}`;
   $('status').lastChild.textContent = message;
-  ['save','reload','factory','refreshStats','refreshSensors','calibrateMpu','resetMpuCalibration','testPetSound','testDoneMelody','testBreakMelody','testTimerStart','stopSoundPreview'].forEach(id => $(id).disabled = !ok);
+  ['save','reload','factory','refreshStats','refreshSensors','refreshDiagnostics','calibrateMpu','resetMpuCalibration','testPetSound','testDoneMelody','testBreakMelody','testTimerStart','stopSoundPreview'].forEach(id => $(id).disabled = !ok);
   $('connect').textContent = ok ? 'Reconnect' : 'Connect BLE';
+}
+
+function cleanTwoWords(value, fallback = '') {
+  const words = String(value || '').trim().split(/\s+/).filter(Boolean).slice(0, 2);
+  return (words.join(' ') || fallback).slice(0, 19);
 }
 
 function formData() {
   const out = {cmd:'set'};
   numberIds.forEach(id => out[id] = Number($(id).value));
   boolIds.forEach(id => out[id] = $(id).checked);
+  stringIds.forEach(id => out[id] = cleanTwoWords($(id).value, id === 'customBootText' ? 'Hello!' : 'Happy Happy'));
   return out;
 }
 
 function applySettings(s) {
   numberIds.forEach(id => { if (s[id] !== undefined) $(id).value = s[id]; });
   boolIds.forEach(id => { if (s[id] !== undefined) $(id).checked = s[id]; });
+  stringIds.forEach(id => { if (s[id] !== undefined) $(id).value = s[id]; });
   if (s.mpuGazeOffsetX !== undefined && s.mpuGazeOffsetY !== undefined) {
     $('calibrationValue').textContent = `${Number(s.mpuGazeOffsetX).toFixed(2)} / ${Number(s.mpuGazeOffsetY).toFixed(2)}`;
   }
@@ -121,10 +130,45 @@ function applyState(s) {
   $('touchStatsValue').textContent = `${s.hugs ?? 0} hugs · ${s.scratches ?? 0} scratches · ${s.swipes ?? 0} swipes`;
   $('focusXpValue').textContent = s.focusXp ?? 0;
   $('rareEventsValue').textContent = s.rareEvents ?? 0;
+  renderFocusHistory(s.historyDay || [], s.historySessions || [], s.historyMinutes || []);
 
   const level = Number(s.level || 1);
   const unlocked = level >= 7 ? 'Crown' : level >= 4 ? 'Orbit' : level >= 2 ? 'Spark' : 'None yet';
   $('unlockText').textContent = `Level ${level} · best unlocked: ${unlocked}`;
+}
+
+function renderFocusHistory(days, sessions, minutes) {
+  const host = $('focusHistory');
+  if (!host) return;
+  const entries = [];
+  for (let i = 0; i < Math.min(7, days.length); i++) {
+    if (Number(days[i]) < 0) continue;
+    entries.push({day:Number(days[i]), sessions:Number(sessions[i] || 0), minutes:Number(minutes[i] || 0)});
+  }
+  entries.sort((a,b) => a.day - b.day);
+  const maxMinutes = Math.max(1, ...entries.map(x => x.minutes));
+  host.innerHTML = '';
+  if (!entries.length) {
+    host.innerHTML = '<p class="micro">Connect and complete a focus session to start the history.</p>';
+    return;
+  }
+  entries.forEach((entry, index) => {
+    const item = document.createElement('div');
+    item.className = 'history-day';
+    const height = Math.max(6, Math.round((entry.minutes / maxMinutes) * 72));
+    item.innerHTML = `<b style="height:${height}px"></b><span>D${index + 1}</span><em>${entry.minutes}m</em>`;
+    item.title = `${entry.sessions} session(s), ${entry.minutes} min`;
+    host.appendChild(item);
+  });
+}
+
+function applyDiagnostics(d) {
+  $('diagLoopHz').textContent = `${Number(d.loopHz || 0).toFixed(0)} Hz`;
+  $('diagRenderFps').textContent = `${Number(d.renderFps || 0).toFixed(1)} fps`;
+  $('diagPresented').textContent = Number(d.framesPresented || 0).toLocaleString();
+  $('diagSkipped').textContent = Number(d.framesSkipped || 0).toLocaleString();
+  const sec = Math.floor(Number(d.uptimeMs || 0) / 1000);
+  $('diagUptime').textContent = `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`;
 }
 
 function applySensors(s) {
@@ -244,6 +288,7 @@ function onNotify(event) {
       if (msg.type === 'settings') applySettings(msg);
       if (msg.type === 'state') applyState(msg);
       if (msg.type === 'sensors') applySensors(msg);
+      if (msg.type === 'diagnostics') applyDiagnostics(msg);
       if (msg.type === 'status') {
         dispatchDeviceStatus(msg);
         const label = msg.status === 'error' ? `Device error: ${msg.detail || 'unknown'}` : (msg.detail || msg.status);
@@ -358,6 +403,7 @@ $('reload').addEventListener('click', () => runBleAction('Reload failed', async 
 
 $('refreshStats').addEventListener('click', () => runBleAction('Stats refresh failed', () => send({cmd:'state'})));
 $('refreshSensors').addEventListener('click', () => runBleAction('Sensor refresh failed', () => send({cmd:'sensors'})));
+$('refreshDiagnostics').addEventListener('click', () => runBleAction('Diagnostics refresh failed', () => send({cmd:'diagnostics'})));
 $('calibrateMpu').addEventListener('click', () => runBleAction('MPU calibration failed', async () => {
   setConnected(true, 'Keep the pet still…');
   const done = waitForDeviceStatus(['mpu_calibrated','mpu_not_found'], 4000);
@@ -392,6 +438,64 @@ $('oledContrast').addEventListener('input', syncOutputs);
 $('motionSensitivity').addEventListener('input', syncOutputs);
 ['idleAnimationSpeed','eyeFollowStrength','inertiaStrength','squashStrength','heartParticleCount','speechEventChance'].forEach(id => $(id).addEventListener('input', syncOutputs));
 $('personality').addEventListener('change', updatePreview);
+
+const PRESETS = {
+  calm: {animationFps:30, idleAnimationSpeed:75, eyeFollowStrength:80, inertiaStrength:70, squashStrength:55, heartParticleCount:6, rareEventsEnabled:true, speechEventChance:35, focusCompanionEnabled:true},
+  expressive: {animationFps:40, idleAnimationSpeed:115, eyeFollowStrength:115, inertiaStrength:110, squashStrength:110, heartParticleCount:12, rareEventsEnabled:true, speechEventChance:70, focusCompanionEnabled:true},
+  cartoon: {animationFps:50, idleAnimationSpeed:125, eyeFollowStrength:120, inertiaStrength:140, squashStrength:140, heartParticleCount:16, rareEventsEnabled:true, speechEventChance:65, focusCompanionEnabled:true},
+  minimal: {animationFps:30, idleAnimationSpeed:70, eyeFollowStrength:70, inertiaStrength:60, squashStrength:35, heartParticleCount:3, rareEventsEnabled:false, speechEventChance:20, focusCompanionEnabled:false},
+  focus: {animationFps:30, idleAnimationSpeed:65, eyeFollowStrength:75, inertiaStrength:65, squashStrength:45, heartParticleCount:5, rareEventsEnabled:false, speechEventChance:25, focusCompanionEnabled:true}
+};
+
+document.querySelectorAll('[data-preset]').forEach(button => {
+  button.addEventListener('click', () => {
+    const preset = PRESETS[button.dataset.preset];
+    Object.entries(preset).forEach(([id, value]) => {
+      const el = $(id);
+      if (!el) return;
+      if (typeof value === 'boolean') el.checked = value;
+      else el.value = value;
+    });
+    syncOutputs();
+  });
+});
+
+$('exportConfig').addEventListener('click', () => {
+  const data = formData();
+  delete data.cmd;
+  const blob = new Blob([JSON.stringify({format:'xiao-computer-pet-config', version:1, settings:data}, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'xiao-computer-pet-config.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 500);
+});
+
+$('importConfig').addEventListener('click', () => $('importConfigFile').click());
+$('importConfigFile').addEventListener('change', async event => {
+  const file = event.target.files?.[0];
+  event.target.value = '';
+  if (!file) return;
+  try {
+    const parsed = JSON.parse(await file.text());
+    const data = parsed.settings || parsed;
+    numberIds.forEach(id => { if (data[id] !== undefined) $(id).value = data[id]; });
+    boolIds.forEach(id => { if (data[id] !== undefined) $(id).checked = !!data[id]; });
+    stringIds.forEach(id => { if (data[id] !== undefined) $(id).value = cleanTwoWords(data[id]); });
+    syncOutputs();
+    updatePreview();
+    setConnected(!!device?.gatt?.connected, 'Configuration imported · Save to pet to apply');
+  } catch (error) {
+    console.warn('Config import failed', error);
+    setConnected(!!device?.gatt?.connected, 'Invalid configuration file');
+  }
+});
+
+stringIds.forEach(id => $(id).addEventListener('change', () => {
+  $(id).value = cleanTwoWords($(id).value, id === 'customBootText' ? 'Hello!' : 'Happy Happy');
+}));
+
 syncOutputs();
 updatePreview();
 

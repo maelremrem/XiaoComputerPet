@@ -8,6 +8,52 @@ static float clamp01(float v) {
   return v;
 }
 
+static float eventEnvelope(float p) {
+  const float attack = clamp01(p / 0.14f);
+  const float release = p > 0.80f ? clamp01((1.0f - p) / 0.20f) : 1.0f;
+  const float a = attack * attack * (3.0f - 2.0f * attack);
+  const float r = release * release * (3.0f - 2.0f * release);
+  return a < r ? a : r;
+}
+
+static bool usesEventEnvelope(PetMood mood) {
+  switch (mood) {
+    case PetMood::Yawn:
+    case PetMood::Sneeze:
+    case PetMood::Dance:
+    case PetMood::Dream:
+    case PetMood::Hiccup:
+    case PetMood::ScratchLeft:
+    case PetMood::ScratchRight:
+    case PetMood::Hug:
+    case PetMood::Dizzy:
+      return true;
+    default:
+      return false;
+  }
+}
+
+static void blendTowardIdle(PetExpression& e, float amount) {
+  const float keep = clamp01(amount);
+  e.leftOpen = 1.0f + (e.leftOpen - 1.0f) * keep;
+  e.rightOpen = 1.0f + (e.rightOpen - 1.0f) * keep;
+  e.leftScaleX = 1.0f + (e.leftScaleX - 1.0f) * keep;
+  e.rightScaleX = 1.0f + (e.rightScaleX - 1.0f) * keep;
+  e.leftX = static_cast<int8_t>(roundf(e.leftX * keep));
+  e.rightX = static_cast<int8_t>(roundf(e.rightX * keep));
+  e.leftY = static_cast<int8_t>(roundf(e.leftY * keep));
+  e.rightY = static_cast<int8_t>(roundf(e.rightY * keep));
+  e.leftBrowTilt = static_cast<int8_t>(roundf(e.leftBrowTilt * keep));
+  e.rightBrowTilt = static_cast<int8_t>(roundf(e.rightBrowTilt * keep));
+  e.leftBrowArch = static_cast<int8_t>(roundf(6.0f + (e.leftBrowArch - 6.0f) * keep));
+  e.rightBrowArch = static_cast<int8_t>(roundf(6.0f + (e.rightBrowArch - 6.0f) * keep));
+  e.browY = static_cast<int8_t>(roundf(e.browY * keep));
+  if (keep < 0.15f) {
+    e.sparkle = false;
+    e.hearts = false;
+  }
+}
+
 static const PetSkinDefinition SKINS[PET_SKIN_COUNT] = {
   {"SOFT",     "rounded",     39, 89, 38, 25, 26, 7, PetEyeStyle::Rounded, PetBrowStyle::Arc,      6, 0},
   {"ROBOT",    "angular",     39, 89, 38, 26, 24, 3, PetEyeStyle::Square,  PetBrowStyle::Flat,     7, 0},
@@ -24,6 +70,22 @@ static const PetSkinDefinition SKINS[PET_SKIN_COUNT] = {
   {"MASK",     "sharp",       39, 89, 38, 31, 22, 3, PetEyeStyle::Mask,    PetBrowStyle::Flat,     7, 1},
 };
 
+static const PetBehaviorProfile PROFILES[PET_SKIN_COUNT] = {
+  {18,18,18,16,14,16, 95,2,110}, // Soft
+  {12,18,10,28,10,22,115,2,125}, // Robot
+  {22,14,20,14,18,12, 90,1, 90}, // Compact
+  {14,16,18,16,14,22,105,3,110}, // Wide
+  {10,14,18,14, 8,36,135,3,145}, // Arcade
+  {12,34,10,16,10,18,110,4,120}, // Alien
+  {16,30,18,10,16,10,100,4, 95}, // Cat
+  {10,18, 8,34,12,18,110,2,135}, // Visor
+  {14,24,12,20,12,18,100,3,115}, // Core
+  {24,10,10,10,38, 8, 75,1, 65}, // Sleepbot
+  {12,26,10,30,10,12,105,3,125}, // Scout
+  {18,18,30, 8,16,10, 90,2, 90}, // Bubble
+  {10,18,10,32,10,20,120,2,140}, // Mask
+};
+
 const PetSkinDefinition& petSkinDefinition(uint8_t skinId) {
   return SKINS[skinId % PET_SKIN_COUNT];
 }
@@ -34,6 +96,10 @@ const char* petSkinName(uint8_t skinId) {
 
 const char* petSkinDetail(uint8_t skinId) {
   return petSkinDefinition(skinId).detail;
+}
+
+const PetBehaviorProfile& petBehaviorProfile(uint8_t skinId) {
+  return PROFILES[skinId % PET_SKIN_COUNT];
 }
 
 PetExpression resolvePetExpression(PetMood mood, uint32_t now, float p) {
@@ -181,6 +247,10 @@ PetExpression resolvePetExpression(PetMood mood, uint32_t now, float p) {
       break;
     default:
       break;
+  }
+
+  if (usesEventEnvelope(mood)) {
+    blendTowardIdle(e, eventEnvelope(p));
   }
 
   if (e.hearts) {

@@ -71,6 +71,12 @@
           <label>Long break every <span>sessions</span><input id="sessionsBeforeLongBreak" type="number" min="1" max="12" value="4"></label>
         </div>
         <label class="switchline"><span>Auto-start breaks</span><input id="autoBreak" type="checkbox"><b></b></label>
+        <label>Companion timer layout
+          <select id="timerCompanionLayout">
+            <option value="0">Pet above · timer below</option>
+            <option value="1">Pet left · timer right</option>
+          </select>
+        </label>
       </article>
 
       <article class="card">
@@ -92,7 +98,11 @@
         <label class="switchline"><span>Motion / tilt reactions</span><input id="motionReactionsEnabled" type="checkbox" checked><b></b></label>
         <label class="switchline"><span>Environment reactions</span><input id="environmentReactionsEnabled" type="checkbox" checked><b></b></label>
         <label class="switchline"><span>Swap left / right touch</span><input id="swapTouchButtons" type="checkbox"><b></b></label>
+        <label class="switchline"><span>Skin-specific personality</span><input id="skinPersonalityEnabled" type="checkbox" checked><b></b></label>
+        <label class="switchline"><span>Micro-sleep when idle</span><input id="microSleepEnabled" type="checkbox" checked><b></b></label>
+        <label class="switchline"><span>Animated wake-up boot</span><input id="bootAnimationEnabled" type="checkbox" checked><b></b></label>
         <div class="fields two">
+          <label>Micro-sleep after <span>sec</span><input id="microSleepSeconds" type="number" min="30" max="3600" value="180"></label>
           <label>MPU mount rotation
             <select id="mpuMountRotation">
               <option value="0">0°</option>
@@ -117,8 +127,43 @@
           <label>Rare event max <span>sec</span><input id="rareEventMaxSeconds" type="number" min="20" max="3600" value="240"></label>
         </div>
         <label>Context text chance <output id="speechEventChanceOut">60%</output><input id="speechEventChance" type="range" min="0" max="100" step="5" value="60"></label>
+        <label>Speech pack
+          <select id="speechPack">
+            <option value="0">Neutral</option>
+            <option value="1">Cute</option>
+            <option value="2">Robot</option>
+            <option value="3">Minimal</option>
+            <option value="4">Custom</option>
+          </select>
+        </label>
+        <div class="fields two">
+          <label>Custom greeting <span>2 words max</span><input id="customBootText" type="text" maxlength="19" value="Hello!"></label>
+          <label>Custom pet reply <span>2 words max</span><input id="customPetText" type="text" maxlength="19" value="Happy Happy"></label>
+        </div>
         <p class="micro">Speech is limited to two words. Ambient idle animations stay silent and never ask for attention; contextual bubbles only react to meaningful events.</p>
         <p class="micro">Hold a side = scratch · sweep left/right = pet · both sides = hug. Ambient animations include silent yawns, sneezes, hiccups, dreams and tiny dances.</p>
+      </article>
+
+      <article class="card">
+        <h2>Behaviour presets</h2>
+        <div class="preset-grid">
+          <button type="button" class="preset" data-preset="calm">Calm</button>
+          <button type="button" class="preset" data-preset="expressive">Expressive</button>
+          <button type="button" class="preset" data-preset="cartoon">Cartoon</button>
+          <button type="button" class="preset" data-preset="minimal">Minimal</button>
+          <button type="button" class="preset" data-preset="focus">Focus</button>
+        </div>
+        <p class="micro">Presets only change the form. Use Save to pet when the result looks right.</p>
+      </article>
+
+      <article class="card">
+        <h2>Configuration file</h2>
+        <div class="tool-row">
+          <button id="exportConfig" type="button">Export JSON</button>
+          <button id="importConfig" type="button">Import JSON</button>
+          <input id="importConfigFile" type="file" accept="application/json,.json" hidden>
+        </div>
+        <p class="micro">Back up or share a complete Desk Buddy configuration without touching the firmware.</p>
       </article>
 
       <article class="card">
@@ -236,7 +281,21 @@
           <div><span>Focus XP</span><strong id="focusXpValue">--</strong></div>
           <div><span>Rare events</span><strong id="rareEventsValue">--</strong></div>
         </div>
+        <h2 class="subhead">Last 7 focus days</h2>
+        <div id="focusHistory" class="history" aria-label="Seven day focus history"></div>
       </article>
+
+      <details class="card wide diagnostics">
+        <summary>Diagnostics</summary>
+        <div class="stat-grid diagnostic-grid">
+          <div><span>Main loop</span><strong id="diagLoopHz">--</strong></div>
+          <div><span>Render target</span><strong id="diagRenderFps">--</strong></div>
+          <div><span>OLED frames</span><strong id="diagPresented">--</strong></div>
+          <div><span>Skipped identical</span><strong id="diagSkipped">--</strong></div>
+          <div><span>Uptime</span><strong id="diagUptime">--</strong></div>
+        </div>
+        <button id="refreshDiagnostics" type="button" disabled>Refresh diagnostics</button>
+      </details>
     </section>
 
     <footer>
@@ -244,7 +303,7 @@
       <button id="reload" disabled>Reload</button>
       <button id="factory" class="danger" disabled>Factory reset</button>
     </footer>
-    <p class="note">For BLE, open this page directly in Chrome/Chromium from <code>http://localhost:8080</code> or HTTPS.</p>
+    <p class="note">Web Bluetooth requires Chrome/Chromium in a secure context. GitHub Pages is HTTPS; local development can use <code>http://localhost:8080</code>.</p>
   </main>
   <script src="app.js"></script>
 </body>

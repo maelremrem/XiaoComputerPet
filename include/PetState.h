@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 struct PetState {
-  uint16_t version = 3;
+  uint16_t version = 4;
   uint8_t mood = 72;
   uint8_t energy = 82;
   uint8_t affection = 55;
@@ -25,4 +25,8 @@ struct PetState {
   int32_t todayDay = -1;
   uint16_t todaySessions = 0;
   uint16_t todayMinutes = 0;
+
+  int32_t historyDay[7] = {-1, -1, -1, -1, -1, -1, -1};
+  uint16_t historySessions[7] = {0, 0, 0, 0, 0, 0, 0};
+  uint16_t historyMinutes[7] = {0, 0, 0, 0, 0, 0, 0};
 };

@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 struct Settings {
-  uint16_t version = 11;
+  uint16_t version = 12;
 
   uint16_t focusMinutes = 25;
   uint16_t breakMinutes = 5;
@@ -35,6 +35,14 @@ struct Settings {
   bool advancedTouchEnabled = true;
   bool rareEventsEnabled = true;
   bool focusCompanionEnabled = true;
+  uint8_t timerCompanionLayout = 0; // 0 = timer below pet, 1 = timer beside pet.
+  bool microSleepEnabled = true;
+  uint16_t microSleepSeconds = 180;
+  bool skinPersonalityEnabled = true;
+  bool bootAnimationEnabled = true;
+  uint8_t speechPack = 0; // 0 neutral, 1 cute, 2 robot, 3 minimal, 4 custom.
+  char customBootText[20] = "Hello!";
+  char customPetText[20] = "Happy Happy";
   bool speechBubblesEnabled = true;
   uint8_t speechEventChance = 60; // 0..100, contextual text chance. Boot greeting ignores this.
   uint16_t rareEventMinSeconds = 90;

@@ -1,4 +1,26 @@
-# v4.7
+# Changelog
+
+## 5.0.1
+
+- Fixed `BehaviorEvent` construction for the GCC/C++ mode used by the Seeed nRF52840 Arduino toolchain.
+- Removed Pomodoro `snprintf` truncation warnings.
+- Running timer now supports three-digit minute values such as `120:00` and `180:00`.
+- Side companion layout automatically uses a compact timer font when three-digit minutes are required.
+- Timer transition handles digit-count changes cleanly (for example `100:00` to `99:59`).
+
+## 5.0.0
+
+- Added prioritized BehaviorEngine with pending event queue.
+- Added skin-specific behaviour profiles and procedural idle variation.
+- Added micro-sleep, animated boot wake-up and skin-change squash transition.
+- Added companion Pomodoro layouts (below / side).
+- Added 7-day focus history.
+- Added speech packs and custom two-word greeting/pet reply.
+- Added Web BLE presets, JSON import/export and diagnostics.
+- Added OLED identical-frame transfer skipping.
+- Added GitHub Pages and PlatformIO firmware workflows.
+- Reworked project README and architecture documentation.
+
 - Made Desk Buddy behavior explicitly non-intrusive: no attention requests or absence penalties.
 - Deprecated boredom-driven behavior and removed boredom from OLED/Web vitals.
 - Mood and affection no longer decay because the pet is ignored.

@@ -9,6 +9,47 @@
 
 using namespace Adafruit_LittleFS_Namespace;
 
+namespace {
+void sanitizeTwoWordText(char* text, size_t capacity, const char* fallback) {
+  if (!text || capacity == 0) return;
+  if (text[0] == '\0') {
+    strncpy(text, fallback, capacity - 1);
+    text[capacity - 1] = '\0';
+  }
+
+  char out[20] = {};
+  size_t o = 0;
+  uint8_t words = 0;
+  bool inWord = false;
+  for (size_t i = 0; text[i] != '\0' && o + 1 < sizeof(out) && o + 1 < capacity; ++i) {
+    char c = text[i];
+    const bool space = c == ' ' || c == '\t' || c == '\n' || c == '\r';
+    if (space) {
+      if (inWord) {
+        inWord = false;
+        if (words >= 2) break;
+        if (o > 0 && out[o - 1] != ' ') out[o++] = ' ';
+      }
+      continue;
+    }
+    if (!inWord) {
+      words++;
+      if (words > 2) break;
+      inWord = true;
+    }
+    out[o++] = c;
+  }
+  while (o > 0 && out[o - 1] == ' ') --o;
+  out[o] = '\0';
+  if (out[0] == '\0') {
+    strncpy(out, fallback, sizeof(out) - 1);
+    out[sizeof(out) - 1] = '\0';
+  }
+  strncpy(text, out, capacity - 1);
+  text[capacity - 1] = '\0';
+}
+}
+
 bool SettingsStore::begin() {
   return InternalFS.begin();
 }
@@ -38,6 +79,9 @@ void SettingsStore::sanitize(Settings& s) {
   s.mpuGazeOffsetY = constrain(s.mpuGazeOffsetY, -1.5f, 1.5f);
   s.mpuMountRotation = constrain(s.mpuMountRotation, 0, 3);
   s.motionSensitivity = constrain(s.motionSensitivity, 50, 150);
+  s.timerCompanionLayout = constrain(s.timerCompanionLayout, 0, 1);
+  s.microSleepSeconds = constrain(s.microSleepSeconds, 30, 3600);
+  s.speechPack = constrain(s.speechPack, 0, 4);
   s.rareEventMinSeconds = constrain(s.rareEventMinSeconds, 20, 1800);
   s.rareEventMaxSeconds = constrain(s.rareEventMaxSeconds, s.rareEventMinSeconds, 3600);
   s.idleAnimationSpeed = constrain(s.idleAnimationSpeed, 50, 150);
@@ -48,6 +92,8 @@ void SettingsStore::sanitize(Settings& s) {
   s.speechEventChance = constrain(s.speechEventChance, 0, 100);
   s.sleepStartHour = constrain(s.sleepStartHour, 0, 23);
   s.sleepEndHour = constrain(s.sleepEndHour, 0, 23);
+  sanitizeTwoWordText(s.customBootText, sizeof(s.customBootText), "Hello!");
+  sanitizeTwoWordText(s.customPetText, sizeof(s.customPetText), "Happy Happy");
   if (s.petName[0] == '\0') strncpy(s.petName, "PIXEL", sizeof(s.petName));
   s.petName[sizeof(s.petName) - 1] = '\0';
 }
@@ -95,6 +141,12 @@ bool SettingsStore::load(Settings& s) {
   s.advancedTouchEnabled = doc["advancedTouchEnabled"] | s.advancedTouchEnabled;
   s.rareEventsEnabled = doc["rareEventsEnabled"] | s.rareEventsEnabled;
   s.focusCompanionEnabled = doc["focusCompanionEnabled"] | s.focusCompanionEnabled;
+  s.timerCompanionLayout = doc["timerCompanionLayout"] | s.timerCompanionLayout;
+  s.microSleepEnabled = doc["microSleepEnabled"] | s.microSleepEnabled;
+  s.microSleepSeconds = doc["microSleepSeconds"] | s.microSleepSeconds;
+  s.skinPersonalityEnabled = doc["skinPersonalityEnabled"] | s.skinPersonalityEnabled;
+  s.bootAnimationEnabled = doc["bootAnimationEnabled"] | s.bootAnimationEnabled;
+  s.speechPack = doc["speechPack"] | s.speechPack;
   s.speechBubblesEnabled = doc["speechBubblesEnabled"] | s.speechBubblesEnabled;
   s.speechEventChance = doc["speechEventChance"] | s.speechEventChance;
   s.rareEventMinSeconds = doc["rareEventMinSeconds"] | s.rareEventMinSeconds;
@@ -112,6 +164,12 @@ bool SettingsStore::load(Settings& s) {
   s.sleepStartHour = doc["sleepStartHour"] | s.sleepStartHour;
   s.sleepEndHour = doc["sleepEndHour"] | s.sleepEndHour;
 
+  const char* bootText = doc["customBootText"] | s.customBootText;
+  strncpy(s.customBootText, bootText, sizeof(s.customBootText) - 1);
+  s.customBootText[sizeof(s.customBootText) - 1] = '\0';
+  const char* petText = doc["customPetText"] | s.customPetText;
+  strncpy(s.customPetText, petText, sizeof(s.customPetText) - 1);
+  s.customPetText[sizeof(s.customPetText) - 1] = '\0';
   const char* name = doc["petName"] | s.petName;
   strncpy(s.petName, name, sizeof(s.petName) - 1);
   s.petName[sizeof(s.petName) - 1] = '\0';
@@ -156,6 +214,14 @@ bool SettingsStore::save(const Settings& source) {
   doc["advancedTouchEnabled"] = s.advancedTouchEnabled;
   doc["rareEventsEnabled"] = s.rareEventsEnabled;
   doc["focusCompanionEnabled"] = s.focusCompanionEnabled;
+  doc["timerCompanionLayout"] = s.timerCompanionLayout;
+  doc["microSleepEnabled"] = s.microSleepEnabled;
+  doc["microSleepSeconds"] = s.microSleepSeconds;
+  doc["skinPersonalityEnabled"] = s.skinPersonalityEnabled;
+  doc["bootAnimationEnabled"] = s.bootAnimationEnabled;
+  doc["speechPack"] = s.speechPack;
+  doc["customBootText"] = s.customBootText;
+  doc["customPetText"] = s.customPetText;
   doc["speechBubblesEnabled"] = s.speechBubblesEnabled;
   doc["speechEventChance"] = s.speechEventChance;
   doc["rareEventMinSeconds"] = s.rareEventMinSeconds;

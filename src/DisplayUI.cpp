@@ -26,11 +26,13 @@ void DisplayUI::setFlipped(bool flipped) {
   display_.setRotation(flipped ? 2 : 0);
   display_.clearDisplay();
   display_.display();
+  frameHashValid_ = false;
 }
 
-void DisplayUI::setAnimationTuning(uint8_t idleSpeed, uint8_t heartParticles) {
-  idleAnimationSpeed_ = constrain(idleSpeed, 50, 150);
+void DisplayUI::setAnimationTuning(uint8_t idleSpeed, uint8_t heartParticles, bool skinPersonalityEnabled) {
+  idleAnimationSpeed_ = constrain(idleSpeed, 50, 180);
   heartParticleCount_ = constrain(heartParticles, 0, 16);
+  skinPersonalityEnabled_ = skinPersonalityEnabled;
 }
 
 void DisplayUI::setContrast(uint8_t contrast) {
@@ -40,6 +42,23 @@ void DisplayUI::setContrast(uint8_t contrast) {
   display_.ssd1306_command(SSD1306_SETCONTRAST);
   display_.ssd1306_command(contrast);
 #endif
+}
+
+void DisplayUI::presentIfChanged(bool force) {
+  const uint8_t* buffer = display_.getBuffer();
+  uint32_t hash = 2166136261UL;
+  for (uint16_t i = 0; i < (hw::SCREEN_WIDTH * hw::SCREEN_HEIGHT / 8); ++i) {
+    hash ^= buffer[i];
+    hash *= 16777619UL;
+  }
+  if (!force && frameHashValid_ && hash == lastFrameHash_) {
+    framesSkipped_++;
+    return;
+  }
+  lastFrameHash_ = hash;
+  frameHashValid_ = true;
+  framesPresented_++;
+  display_.display();
 }
 
 void DisplayUI::centerText(const char* text, int16_t y, uint8_t size) {
@@ -169,7 +188,7 @@ void DisplayUI::drawTimerLayer(const char* text, int16_t y, uint8_t alphaStep, i
   const uint8_t threshold = min<uint8_t>(16, alphaStep);
   for (int16_t py = 0; py < canvas.height(); ++py) {
     const int16_t dy = y + py;
-    if (dy < 14 || dy >= 45) continue;
+    if (dy < 0 || dy >= hw::SCREEN_HEIGHT) continue;
     for (int16_t px = 0; px < canvas.width(); ++px) {
       if (!canvas.getPixel(px, py)) continue;
       const int16_t dx = startX + px;
@@ -210,8 +229,9 @@ void DisplayUI::drawSmallTextLayer(const char* text, int16_t x, int16_t y, uint8
   }
 }
 
-void DisplayUI::drawTimerGlyph(char glyph, int16_t x, int16_t y, uint8_t alphaStep) {
+void DisplayUI::drawTimerGlyph(char glyph, int16_t x, int16_t y, uint8_t alphaStep, uint8_t textSize) {
   if (alphaStep == 0) return;
+  textSize = constrain(textSize, 1, 2);
 
   static const uint8_t bayer[4][4] = {
     {0, 8, 2, 10},
@@ -220,17 +240,19 @@ void DisplayUI::drawTimerGlyph(char glyph, int16_t x, int16_t y, uint8_t alphaSt
     {15, 7, 13, 5}
   };
 
-  GFXcanvas1 canvas(12, 16);
+  const int16_t glyphWidth = 6 * textSize;
+  const int16_t glyphHeight = 8 * textSize;
+  GFXcanvas1 canvas(glyphWidth, glyphHeight);
   canvas.fillScreen(0);
   canvas.setTextColor(1);
-  canvas.setTextSize(2);
+  canvas.setTextSize(textSize);
   canvas.setCursor(0, 0);
   canvas.print(glyph);
 
   const uint8_t threshold = min<uint8_t>(16, alphaStep);
   for (int16_t py = 0; py < canvas.height(); ++py) {
     const int16_t dy = y + py;
-    if (dy < 14 || dy >= 45) continue;
+    if (dy < 0 || dy >= hw::SCREEN_HEIGHT) continue;
     for (int16_t px = 0; px < canvas.width(); ++px) {
       if (!canvas.getPixel(px, py)) continue;
       const int16_t dx = x + px;
@@ -361,6 +383,7 @@ void DisplayUI::drawStyledBrow(PetBrowStyle style, int16_t cx, int16_t cy, int16
 
 void DisplayUI::drawFace(PetMood mood, uint32_t now, float p, uint8_t personality, float pressAmount, const PetMotionInput& motionInput) {
   const PetSkinDefinition& skin = petSkinDefinition(personality);
+  const PetBehaviorProfile& profile = petBehaviorProfile(personality);
   PetExpression expr = resolvePetExpression(mood, now, p);
   const PetMotionPose motion = resolvePetMotion(motionInput, now);
 
@@ -384,9 +407,16 @@ void DisplayUI::drawFace(PetMood mood, uint32_t now, float p, uint8_t personalit
   // Idle glance is an emotion-level micro animation; MPU/touch gravity is layered after it.
   if (mood == PetMood::Idle && fabsf(motionInput.tiltX) < 0.12f && fabsf(motionInput.tiltY) < 0.12f) {
     const uint8_t gazePhase = (animNow / 1700UL) % 5;
-    const int8_t gaze = gazePhase == 1 ? -2 : (gazePhase == 3 ? 2 : 0);
+    const int8_t amplitude = skinPersonalityEnabled_ ? static_cast<int8_t>(profile.glanceAmplitude) : 2;
+    const int8_t gaze = gazePhase == 1 ? -amplitude : (gazePhase == 3 ? amplitude : 0);
     leftX += gaze;
     rightX += gaze;
+  }
+
+  if (skinPersonalityEnabled_ && mood == PetMood::Idle) {
+    const int8_t browDrift = static_cast<int8_t>(((animNow / 2300UL + personality) % 3UL) - 1);
+    expr.leftBrowArch = max<int8_t>(1, expr.leftBrowArch + browDrift);
+    expr.rightBrowArch = max<int8_t>(1, expr.rightBrowArch - browDrift);
   }
 
   leftX += expr.leftX;
@@ -665,7 +695,7 @@ void DisplayUI::renderPet(PetMood mood, uint32_t now, float effectProgress, uint
     drawFace(mood, now, effectProgress, personality, pressAmount, motion);
     if (sleeping) drawSleepZzz(now);
   }
-  display_.display();
+  presentIfChanged();
 }
 
 void DisplayUI::renderPomodoroReady(uint8_t timerMode, uint8_t previousTimerMode,
@@ -680,7 +710,7 @@ void DisplayUI::renderPomodoroReady(uint8_t timerMode, uint8_t previousTimerMode
     return mode == 0 ? "FOCUS" : (mode == 1 ? "SHORT" : "LONG");
   };
   auto formatMinutes = [](uint16_t mins, char* out, size_t outLen) {
-    snprintf(out, outLen, "%02u:00", mins);
+    snprintf(out, outLen, "%02lu:00", static_cast<unsigned long>(mins));
   };
 
   if (ambientAvailable && isfinite(temperatureC) && isfinite(pressureHpa)) {
@@ -696,8 +726,8 @@ void DisplayUI::renderPomodoroReady(uint8_t timerMode, uint8_t previousTimerMode
   const int16_t slide = 34;
   const int8_t dir = modeDirection >= 0 ? 1 : -1;
 
-  char oldTime[8];
-  char newTime[8];
+  char oldTime[10];
+  char newTime[10];
   formatMinutes(previousMinutes, oldTime, sizeof(oldTime));
   formatMinutes(minutes, newTime, sizeof(newTime));
 
@@ -727,7 +757,7 @@ void DisplayUI::renderPomodoroReady(uint8_t timerMode, uint8_t previousTimerMode
   const uint8_t width = pulse < 10 ? (24 + pulse * 3) : (24 + (19 - pulse) * 3);
   const int16_t x = (128 - width) / 2;
   display_.drawRoundRect(x, 12, width, 3, 1, OLED_WHITE);
-  display_.display();
+  presentIfChanged();
 }
 
 
@@ -755,7 +785,44 @@ void DisplayUI::drawFocusCompanion(float progress, bool paused, uint8_t timerMod
   display_.fillRoundRect(rightX - w / 2, y - h / 2, w, h, min<int16_t>(3, h / 2), OLED_WHITE);
 }
 
-void DisplayUI::renderPomodoro(uint32_t remainingMs, uint32_t totalMs, bool paused, uint8_t timerMode, float temperatureC, float pressureHpa, bool ambientAvailable, bool focusCompanion, uint32_t now) {
+
+void DisplayUI::drawPomodoroPet(float progress, bool paused, uint8_t timerMode, uint8_t personality, uint8_t layout, uint32_t now) {
+  const PetSkinDefinition& skin = petSkinDefinition(personality);
+  PetMood petMood = PetMood::Focused;
+  if (paused) petMood = PetMood::Sleepy;
+  else if (timerMode != 0) petMood = PetMood::Happy;
+  else if (progress > 0.92f) petMood = PetMood::Curious;
+
+  PetExpression expr = resolvePetExpression(petMood, now, 0.5f);
+  const float scale = layout == 0 ? 0.43f : 0.38f;
+  const int16_t centerX = layout == 0 ? 64 : 28;
+  const int16_t centerY = layout == 0 ? 22 : 31;
+  const int16_t separation = static_cast<int16_t>((skin.rightX - skin.leftX) * scale);
+  const int16_t leftX = centerX - separation / 2;
+  const int16_t rightX = centerX + separation / 2;
+  const int16_t eyeW = max<int16_t>(6, static_cast<int16_t>(skin.eyeW * scale));
+  const int16_t baseH = max<int16_t>(5, static_cast<int16_t>(skin.eyeH * scale));
+  int16_t eyeH = max<int16_t>(2, static_cast<int16_t>(baseH * ((expr.leftOpen + expr.rightOpen) * 0.5f)));
+  if (!paused && timerMode == 0 && progress > 0.45f && progress < 0.92f) {
+    eyeH = max<int16_t>(2, eyeH - static_cast<int16_t>(progress * 2.0f));
+  }
+
+  const bool blink = !paused && ((now / 3100UL) % 7UL) == 0UL && (now % 3100UL) < 110UL;
+  if (blink) eyeH = 2;
+
+  drawStyledEye(skin.eyeStyle, leftX, centerY, eyeW, eyeH, max<int16_t>(1, static_cast<int16_t>(skin.radius * scale)), true, now);
+  drawStyledEye(skin.eyeStyle, rightX, centerY, eyeW, eyeH, max<int16_t>(1, static_cast<int16_t>(skin.radius * scale)), false, now);
+
+  const int16_t browY = centerY - baseH / 2 - 5;
+  const int16_t half = max<int16_t>(5, eyeW / 2);
+  const uint8_t thickness = max<uint8_t>(2, static_cast<uint8_t>(skin.browThickness / 2));
+  drawStyledBrow(skin.browStyle, leftX, browY, half, expr.leftBrowTilt / 2, max<int8_t>(2, expr.leftBrowArch / 2), thickness);
+  drawStyledBrow(skin.browStyle, rightX, browY, half, expr.rightBrowTilt / 2, max<int8_t>(2, expr.rightBrowArch / 2), thickness);
+}
+
+void DisplayUI::renderPomodoro(uint32_t remainingMs, uint32_t totalMs, bool paused, uint8_t timerMode,
+                                float temperatureC, float pressureHpa, bool ambientAvailable,
+                                bool focusCompanion, uint8_t timerCompanionLayout, uint8_t personality, uint32_t now) {
   display_.clearDisplay();
   display_.setTextSize(1);
   const bool isBreak = timerMode != 0;
@@ -785,13 +852,15 @@ void DisplayUI::renderPomodoro(uint32_t remainingMs, uint32_t totalMs, bool paus
   }
 
   auto formatTime = [](uint32_t secondsValue, char* out, size_t outLen) {
-    const uint16_t minutesValue = secondsValue / 60;
-    const uint8_t seconds = secondsValue % 60;
-    snprintf(out, outLen, "%02u:%02u", minutesValue, seconds);
+    const uint32_t minutesValue = secondsValue / 60UL;
+    const uint32_t seconds = secondsValue % 60UL;
+    snprintf(out, outLen, "%02lu:%02lu",
+             static_cast<unsigned long>(minutesValue),
+             static_cast<unsigned long>(seconds));
   };
 
-  char fromText[8];
-  char toText[8];
+  char fromText[16];
+  char toText[16];
   formatTime(timerFromSeconds_, fromText, sizeof(fromText));
   formatTime(timerToSeconds_, toText, sizeof(toText));
 
@@ -799,30 +868,57 @@ void DisplayUI::renderPomodoro(uint32_t remainingMs, uint32_t totalMs, bool paus
   float t = static_cast<float>(now - timerTransitionAt_) / static_cast<float>(transitionMs);
   if (t > 1.0f) t = 1.0f;
   const float e = easeOutCubic(t);
-  const int16_t glyphW = 12;
-  const int16_t startX = (hw::SCREEN_WIDTH - 5 * glyphW) / 2;
-  const int16_t baseY = 20;
-  const int16_t travel = 12;
+  const bool companionBelow = focusCompanion && timerCompanionLayout == 0;
+  const bool companionSide = focusCompanion && timerCompanionLayout == 1;
+  const size_t fromLen = strlen(fromText);
+  const size_t toLen = strlen(toText);
+  const size_t maxLen = fromLen > toLen ? fromLen : toLen;
+  const uint8_t timerTextSize = (companionSide && maxLen > 5U) ? 1U : 2U;
+  const int16_t glyphW = 6 * timerTextSize;
+  const int16_t baseY = companionBelow ? 38 : (companionSide ? (timerTextSize == 1 ? 31 : 27) : 20);
+  const int16_t travel = companionBelow ? 9 : 12;
 
-  for (uint8_t i = 0; i < 5; ++i) {
-    const int16_t x = startX + static_cast<int16_t>(i) * glyphW;
-    const bool changing = t < 1.0f && fromText[i] != toText[i];
-    if (!changing) {
-      drawTimerGlyph(toText[i], x, baseY, 16);
-      continue;
+  auto timerStartX = [&](size_t len) -> int16_t {
+    const int16_t width = static_cast<int16_t>(len) * glyphW;
+    if (companionSide) {
+      constexpr int16_t regionX = 58;
+      constexpr int16_t regionW = hw::SCREEN_WIDTH - regionX;
+      return regionX + (regionW - width) / 2;
     }
+    return (hw::SCREEN_WIDTH - width) / 2;
+  };
 
-    const int16_t oldY = baseY - static_cast<int16_t>(travel * e);
-    const int16_t newY = baseY + static_cast<int16_t>(travel * (1.0f - e));
-    const uint8_t oldAlpha = static_cast<uint8_t>((1.0f - e) * 16.0f);
-    const uint8_t newAlpha = static_cast<uint8_t>(e * 16.0f);
-    drawTimerGlyph(fromText[i], x, oldY, oldAlpha);
-    drawTimerGlyph(toText[i], x, newY, newAlpha);
+  const int16_t oldY = baseY - static_cast<int16_t>(travel * e);
+  const int16_t newY = baseY + static_cast<int16_t>(travel * (1.0f - e));
+  const uint8_t oldAlpha = static_cast<uint8_t>((1.0f - e) * 16.0f);
+  const uint8_t newAlpha = static_cast<uint8_t>(e * 16.0f);
+
+  if (t < 1.0f && fromLen != toLen) {
+    const int16_t oldStartX = timerStartX(fromLen);
+    const int16_t newStartX = timerStartX(toLen);
+    for (size_t i = 0; i < fromLen; ++i) {
+      drawTimerGlyph(fromText[i], oldStartX + static_cast<int16_t>(i) * glyphW, oldY, oldAlpha, timerTextSize);
+    }
+    for (size_t i = 0; i < toLen; ++i) {
+      drawTimerGlyph(toText[i], newStartX + static_cast<int16_t>(i) * glyphW, newY, newAlpha, timerTextSize);
+    }
+  } else {
+    const int16_t startX = timerStartX(toLen);
+    for (size_t i = 0; i < toLen; ++i) {
+      const int16_t x = startX + static_cast<int16_t>(i) * glyphW;
+      const bool changing = t < 1.0f && fromText[i] != toText[i];
+      if (!changing) {
+        drawTimerGlyph(toText[i], x, baseY, 16, timerTextSize);
+        continue;
+      }
+      drawTimerGlyph(fromText[i], x, oldY, oldAlpha, timerTextSize);
+      drawTimerGlyph(toText[i], x, newY, newAlpha, timerTextSize);
+    }
   }
 
   if (focusCompanion) {
     const float progress = totalMs ? constrain(static_cast<float>(totalMs - remainingMs) / static_cast<float>(totalMs), 0.0f, 1.0f) : 1.0f;
-    drawFocusCompanion(progress, paused, timerMode, remainingMs, now);
+    drawPomodoroPet(progress, paused, timerMode, personality, timerCompanionLayout, now);
   } else {
     if (paused) centerText("PAUSED", 43, 1);
     else centerText(isBreak ? "RECOVER" : "DEEP WORK", 43, 1);
@@ -831,7 +927,7 @@ void DisplayUI::renderPomodoro(uint32_t remainingMs, uint32_t totalMs, bool paus
   display_.drawRoundRect(7, 55, 114, 7, 3, OLED_WHITE);
   const uint16_t fill = totalMs ? static_cast<uint16_t>((110ULL * (totalMs - remainingMs)) / totalMs) : 110;
   if (fill > 0) display_.fillRoundRect(9, 57, (fill < 110) ? fill : 110, 3, 1, OLED_WHITE);
-  display_.display();
+  presentIfChanged();
 }
 
 void DisplayUI::renderStats(const PetState& state) {
@@ -864,7 +960,7 @@ void DisplayUI::renderStats(const PetState& state) {
   display_.print(state.affection);
   display_.drawRoundRect(37, 50, 49, 7, 3, OLED_WHITE);
   display_.fillRoundRect(39, 52, static_cast<uint8_t>(45UL * state.affection / 100UL), 3, 1, OLED_WHITE);
-  display_.display();
+  presentIfChanged();
 }
 
 void DisplayUI::renderConfigHint() {
@@ -872,7 +968,7 @@ void DisplayUI::renderConfigHint() {
   centerText("CONFIG", 8, 1);
   centerText("BLE READY", 25, 2);
   centerText("XIAO Computer Pet", 52, 1);
-  display_.display();
+  presentIfChanged();
 }
 
 float DisplayUI::easeOutCubic(float t) {
@@ -1235,6 +1331,6 @@ void DisplayUI::renderPetMenu(PetMenuView view, uint8_t index, uint8_t previousI
   }
 
   drawMenuFooter(index, count);
-  display_.display();
+  presentIfChanged();
 }
 

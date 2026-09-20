@@ -7,7 +7,7 @@
 using namespace Adafruit_LittleFS_Namespace;
 
 void PetStateStore::sanitize(PetState& s) {
-  s.version = 3;
+  s.version = 4;
   s.mood = constrain(s.mood, 0, 100);
   s.energy = constrain(s.energy, 0, 100);
   s.affection = constrain(s.affection, 0, 100);
@@ -49,6 +49,14 @@ bool PetStateStore::load(PetState& s) {
   s.todayDay = doc["todayDay"] | s.todayDay;
   s.todaySessions = doc["todaySessions"] | s.todaySessions;
   s.todayMinutes = doc["todayMinutes"] | s.todayMinutes;
+  JsonArray historyDay = doc["historyDay"].as<JsonArray>();
+  JsonArray historySessions = doc["historySessions"].as<JsonArray>();
+  JsonArray historyMinutes = doc["historyMinutes"].as<JsonArray>();
+  for (uint8_t i = 0; i < 7; ++i) {
+    if (!historyDay.isNull() && i < historyDay.size()) s.historyDay[i] = historyDay[i] | s.historyDay[i];
+    if (!historySessions.isNull() && i < historySessions.size()) s.historySessions[i] = historySessions[i] | s.historySessions[i];
+    if (!historyMinutes.isNull() && i < historyMinutes.size()) s.historyMinutes[i] = historyMinutes[i] | s.historyMinutes[i];
+  }
   sanitize(s);
   return true;
 }
@@ -81,6 +89,14 @@ bool PetStateStore::save(const PetState& source) {
   doc["todayDay"] = s.todayDay;
   doc["todaySessions"] = s.todaySessions;
   doc["todayMinutes"] = s.todayMinutes;
+  JsonArray historyDay = doc["historyDay"].to<JsonArray>();
+  JsonArray historySessions = doc["historySessions"].to<JsonArray>();
+  JsonArray historyMinutes = doc["historyMinutes"].to<JsonArray>();
+  for (uint8_t i = 0; i < 7; ++i) {
+    historyDay.add(s.historyDay[i]);
+    historySessions.add(s.historySessions[i]);
+    historyMinutes.add(s.historyMinutes[i]);
+  }
   serializeJson(doc, file);
   file.flush();
   file.close();

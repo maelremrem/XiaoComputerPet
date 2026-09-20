@@ -109,6 +109,14 @@ void BleConfigService::sendSettings() {
   doc["advancedTouchEnabled"] = settings_->advancedTouchEnabled;
   doc["rareEventsEnabled"] = settings_->rareEventsEnabled;
   doc["focusCompanionEnabled"] = settings_->focusCompanionEnabled;
+  doc["timerCompanionLayout"] = settings_->timerCompanionLayout;
+  doc["microSleepEnabled"] = settings_->microSleepEnabled;
+  doc["microSleepSeconds"] = settings_->microSleepSeconds;
+  doc["skinPersonalityEnabled"] = settings_->skinPersonalityEnabled;
+  doc["bootAnimationEnabled"] = settings_->bootAnimationEnabled;
+  doc["speechPack"] = settings_->speechPack;
+  doc["customBootText"] = settings_->customBootText;
+  doc["customPetText"] = settings_->customPetText;
   doc["speechBubblesEnabled"] = settings_->speechBubblesEnabled;
   doc["speechEventChance"] = settings_->speechEventChance;
   doc["rareEventMinSeconds"] = settings_->rareEventMinSeconds;
@@ -151,6 +159,14 @@ void BleConfigService::sendState() {
   doc["streakDays"] = state_->streakDays;
   doc["todaySessions"] = state_->todaySessions;
   doc["todayMinutes"] = state_->todayMinutes;
+  JsonArray historyDay = doc["historyDay"].to<JsonArray>();
+  JsonArray historySessions = doc["historySessions"].to<JsonArray>();
+  JsonArray historyMinutes = doc["historyMinutes"].to<JsonArray>();
+  for (uint8_t i = 0; i < 7; ++i) {
+    historyDay.add(state_->historyDay[i]);
+    historySessions.add(state_->historySessions[i]);
+    historyMinutes.add(state_->historyMinutes[i]);
+  }
   serializeJson(doc, uart_);
   uart_.println();
 }
@@ -179,6 +195,25 @@ void BleConfigService::sendSensors() {
     doc["temperatureC"] = sensors_.temperatureC;
     doc["pressureHpa"] = sensors_.pressureHpa;
   }
+  serializeJson(doc, uart_);
+  uart_.println();
+}
+
+void BleConfigService::setRuntimeDiagnostics(float loopHz, float renderFps, uint32_t framesPresented, uint32_t framesSkipped) {
+  loopHz_ = loopHz;
+  renderFps_ = renderFps;
+  framesPresented_ = framesPresented;
+  framesSkipped_ = framesSkipped;
+}
+
+void BleConfigService::sendDiagnostics() {
+  JsonDocument doc;
+  doc["type"] = "diagnostics";
+  doc["loopHz"] = loopHz_;
+  doc["renderFps"] = renderFps_;
+  doc["framesPresented"] = framesPresented_;
+  doc["framesSkipped"] = framesSkipped_;
+  doc["uptimeMs"] = millis();
   serializeJson(doc, uart_);
   uart_.println();
 }
@@ -216,6 +251,7 @@ void BleConfigService::handleLine(const String& line) {
     sendSettings();
     sendState();
     sendSensors();
+    sendDiagnostics();
     return;
   }
 
@@ -226,6 +262,11 @@ void BleConfigService::handleLine(const String& line) {
 
   if (!strcmp(cmd, "sensors")) {
     sendSensors();
+    return;
+  }
+
+  if (!strcmp(cmd, "diagnostics")) {
+    sendDiagnostics();
     return;
   }
 
@@ -320,6 +361,12 @@ void BleConfigService::handleLine(const String& line) {
     settings_->advancedTouchEnabled = doc["advancedTouchEnabled"] | settings_->advancedTouchEnabled;
     settings_->rareEventsEnabled = doc["rareEventsEnabled"] | settings_->rareEventsEnabled;
     settings_->focusCompanionEnabled = doc["focusCompanionEnabled"] | settings_->focusCompanionEnabled;
+    settings_->timerCompanionLayout = doc["timerCompanionLayout"] | settings_->timerCompanionLayout;
+    settings_->microSleepEnabled = doc["microSleepEnabled"] | settings_->microSleepEnabled;
+    settings_->microSleepSeconds = doc["microSleepSeconds"] | settings_->microSleepSeconds;
+    settings_->skinPersonalityEnabled = doc["skinPersonalityEnabled"] | settings_->skinPersonalityEnabled;
+    settings_->bootAnimationEnabled = doc["bootAnimationEnabled"] | settings_->bootAnimationEnabled;
+    settings_->speechPack = doc["speechPack"] | settings_->speechPack;
     settings_->speechBubblesEnabled = doc["speechBubblesEnabled"] | settings_->speechBubblesEnabled;
     settings_->speechEventChance = doc["speechEventChance"] | settings_->speechEventChance;
     settings_->rareEventMinSeconds = doc["rareEventMinSeconds"] | settings_->rareEventMinSeconds;
@@ -342,6 +389,17 @@ void BleConfigService::handleLine(const String& line) {
     settings_->sleepEnabled = doc["sleepEnabled"] | settings_->sleepEnabled;
     settings_->sleepStartHour = doc["sleepStartHour"] | settings_->sleepStartHour;
     settings_->sleepEndHour = doc["sleepEndHour"] | settings_->sleepEndHour;
+
+    if (doc["customBootText"].is<const char*>()) {
+      const char* text = doc["customBootText"];
+      strncpy(settings_->customBootText, text, sizeof(settings_->customBootText) - 1);
+      settings_->customBootText[sizeof(settings_->customBootText) - 1] = '\0';
+    }
+    if (doc["customPetText"].is<const char*>()) {
+      const char* text = doc["customPetText"];
+      strncpy(settings_->customPetText, text, sizeof(settings_->customPetText) - 1);
+      settings_->customPetText[sizeof(settings_->customPetText) - 1] = '\0';
+    }
 
     if (doc["petName"].is<const char*>()) {
       const char* name = doc["petName"];

@@ -62,6 +62,19 @@ struct PetSkinDefinition {
   uint8_t flags;
 };
 
+
+struct PetBehaviorProfile {
+  uint8_t blinkWeight;
+  uint8_t curiousWeight;
+  uint8_t happyWeight;
+  uint8_t focusedWeight;
+  uint8_t sleepyWeight;
+  uint8_t excitedWeight;
+  uint8_t idleSpeedPercent;
+  uint8_t glanceAmplitude;
+  uint16_t microSleepScalePercent;
+};
+
 struct PetExpression {
   float leftOpen = 1.0f;
   float rightOpen = 1.0f;
@@ -115,5 +128,6 @@ constexpr uint8_t PET_SKIN_COUNT = 13;
 const PetSkinDefinition& petSkinDefinition(uint8_t skinId);
 const char* petSkinName(uint8_t skinId);
 const char* petSkinDetail(uint8_t skinId);
+const PetBehaviorProfile& petBehaviorProfile(uint8_t skinId);
 PetExpression resolvePetExpression(PetMood mood, uint32_t now, float effectProgress);
 PetMotionPose resolvePetMotion(const PetMotionInput& input, uint32_t now);

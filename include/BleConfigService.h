@@ -19,12 +19,14 @@ class BleConfigService {
   bool consumeMpuCalibrationRequest(bool& reset);
   void reportMpuCalibration(bool ok, bool reset);
   void setSensorTelemetry(const SensorSnapshot& sensors);
+  void setRuntimeDiagnostics(float loopHz, float renderFps, uint32_t framesPresented, uint32_t framesSkipped);
 
  private:
   void handleLine(const String& line);
   void sendSettings();
   void sendState();
   void sendSensors();
+  void sendDiagnostics();
   void sendStatus(const char* status, const char* detail = nullptr);
 
   BLEUart uart_;
@@ -43,4 +45,8 @@ class BleConfigService {
   SensorSnapshot sensors_;
   bool mpuCalibrationPending_ = false;
   bool mpuCalibrationReset_ = false;
+  float loopHz_ = 0.0f;
+  float renderFps_ = 0.0f;
+  uint32_t framesPresented_ = 0;
+  uint32_t framesSkipped_ = 0;
 };

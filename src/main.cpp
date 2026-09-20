@@ -13,6 +13,7 @@
 #include "PomodoroTimer.h"
 #include "DisplayUI.h"
 #include "BleConfigService.h"
+#include "BehaviorEngine.h"
 
 enum class AppMode : uint8_t { Pet, PomodoroReady, Pomodoro, Celebration, PetMenu };
 enum class TimerMode : uint8_t { Focus = 0, ShortBreak = 1, LongBreak = 2 };
@@ -58,11 +59,7 @@ int16_t tzOffsetMinutes = 0;
 uint32_t sleepOverrideUntil = 0;
 uint32_t suppressInputUntil = 0;
 bool petStateDirty = false;
-uint32_t deskMoodUntil = 0;
-uint32_t deskMoodStarted = 0;
-uint16_t deskMoodDuration = 0;
-PetMood deskMood = PetMood::Idle;
-bool deskMoodExplicit = false;
+BehaviorEngine behavior;
 
 bool speechActive = false;
 uint32_t speechStarted = 0;
@@ -83,9 +80,18 @@ bool rightHoldActionFired = false;
 bool hugActionFired = false;
 uint32_t touchGestureCooldownUntil = 0;
 uint32_t lastSensorTelemetryAt = 0;
+uint32_t lastSensorUpdateAt = 0;
 uint32_t petStateSaveAfter = 0;
 uint32_t lastButtonActivityAt = 0;
+uint32_t lastCompanionActivityAt = 0;
 bool oledDimmed = false;
+uint8_t previousPersonality = 0;
+uint32_t skinChangeStarted = 0;
+uint32_t diagnosticWindowAt = 0;
+uint32_t loopCounter = 0;
+uint32_t renderedFrameCounter = 0;
+float measuredLoopHz = 0.0f;
+float measuredRenderFps = 0.0f;
 
 enum class DeskOrientation : uint8_t { Center, Left, Right, Up, Down, FaceDown };
 DeskOrientation lastDeskOrientation = DeskOrientation::Center;
@@ -126,11 +132,23 @@ void flushPetStateIfDue(uint32_t now) {
   petStateDirty = false;
 }
 
+uint8_t effectiveIdleSpeed() {
+  uint16_t speed = settings.idleAnimationSpeed;
+  if (settings.skinPersonalityEnabled) {
+    speed = static_cast<uint16_t>((speed * petBehaviorProfile(settings.personality).idleSpeedPercent) / 100U);
+  }
+  return static_cast<uint8_t>(constrain(speed, 50U, 180U));
+}
+
 uint32_t randomFaceDelayMs() {
   const uint32_t minMs = static_cast<uint32_t>(settings.faceMinSeconds) * 1000UL;
   const uint32_t maxMs = static_cast<uint32_t>(settings.faceMaxSeconds) * 1000UL;
-  if (maxMs <= minMs) return minMs;
-  return random(minMs, maxMs + 1);
+  uint32_t delayMs = maxMs <= minMs ? minMs : random(minMs, maxMs + 1);
+  if (settings.skinPersonalityEnabled) {
+    const uint16_t speed = petBehaviorProfile(settings.personality).idleSpeedPercent;
+    delayMs = static_cast<uint32_t>((static_cast<uint64_t>(delayMs) * 100ULL) / max<uint16_t>(50, speed));
+  }
+  return delayMs;
 }
 
 int64_t localEpoch(uint32_t now) {
@@ -187,23 +205,55 @@ void updateStreak(uint32_t now) {
 
 
 const char* chooseSpeech(SpeechContext context) {
-  // Speech is intentionally non-demanding. Autonomous idle events remain silent;
-  // bubbles are reserved for greetings, explicit interaction, physical reactions,
-  // sleep/wake transitions and timer completion.
-  static const char* const BOOT[]       = {"Hello!", "Good Again!", "Hi There", "Oh Hi", "Good Day"};
-  static const char* const PET[]        = {"Happy Happy", "So Happy", "Love That", "Thank You", "Best Pats"};
-  static const char* const PICKUP[]     = {"Whoa!", "Going Up", "Oh Hey", "Adventure?"};
-  static const char* const SETTLED[]    = {"Nice Desk", "All Good", "Comfy Here", "Home Again"};
-  static const char* const SHAKE[]      = {"Whoa Whoa", "Dizzy Me", "Too Much", "Spinny!"};
-  static const char* const FOCUS[]      = {"Nice Work", "Focus Win", "We Did", "Great Job", "All Done"};
-  static const char* const BREAK[]      = {"Break Done", "Ready Again", "Back Soon", "Refreshed!"};
-  static const char* const SLEEP[]      = {"Good Night", "Nap Time", "Sleepy Time", "Night Night"};
-  static const char* const WAKE[]       = {"Morning!", "I'm Up", "Hi Again", "New Day"};
+  static const char* const BOOT_NEUTRAL[] = {"Hello!", "Good Again!", "Hi There", "Oh Hi", "Good Day"};
+  static const char* const PET_NEUTRAL[] = {"Happy Happy", "So Happy", "Love That", "Thank You", "Best Pats"};
+  static const char* const BOOT_CUTE[] = {"Hiii!", "Yay Hello", "Tiny Hello", "Good Morning"};
+  static const char* const PET_CUTE[] = {"Hehe!", "More Love", "So Cozy", "Heart Eyes"};
+  static const char* const BOOT_ROBOT[] = {"BOOT OK", "HELLO USER", "SYSTEM READY", "ONLINE"};
+  static const char* const PET_ROBOT[] = {"INPUT NICE", "JOY PLUS", "PAT OK", "BOND UP"};
+  static const char* const BOOT_MIN[] = {"Hello", "Ready"};
+  static const char* const PET_MIN[] = {"Happy", "Nice"};
 
-  const char* const* lines = BOOT;
-  size_t count = sizeof(BOOT) / sizeof(BOOT[0]);
+  static const char* const PICKUP[] = {"Whoa!", "Going Up", "Oh Hey", "Adventure?"};
+  static const char* const SETTLED[] = {"Nice Desk", "All Good", "Comfy Here", "Home Again"};
+  static const char* const SHAKE[] = {"Whoa Whoa", "Dizzy Me", "Too Much", "Spinny!"};
+  static const char* const FOCUS[] = {"Nice Work", "Focus Win", "We Did", "Great Job", "All Done"};
+  static const char* const BREAK[] = {"Break Done", "Ready Again", "Back Soon", "Refreshed!"};
+  static const char* const SLEEP[] = {"Good Night", "Nap Time", "Sleepy Time", "Night Night"};
+  static const char* const WAKE[] = {"Morning!", "I'm Up", "Hi Again", "New Day"};
+
+  if (settings.speechPack == 4) {
+    if (context == SpeechContext::Boot) return settings.customBootText;
+    if (context == SpeechContext::Pet) return settings.customPetText;
+  }
+
+  const char* const* lines = BOOT_NEUTRAL;
+  size_t count = sizeof(BOOT_NEUTRAL) / sizeof(BOOT_NEUTRAL[0]);
+
+  if (context == SpeechContext::Boot || context == SpeechContext::Pet) {
+    const bool pet = context == SpeechContext::Pet;
+    switch (settings.speechPack) {
+      case 1:
+        lines = pet ? PET_CUTE : BOOT_CUTE;
+        count = pet ? sizeof(PET_CUTE) / sizeof(PET_CUTE[0]) : sizeof(BOOT_CUTE) / sizeof(BOOT_CUTE[0]);
+        break;
+      case 2:
+        lines = pet ? PET_ROBOT : BOOT_ROBOT;
+        count = pet ? sizeof(PET_ROBOT) / sizeof(PET_ROBOT[0]) : sizeof(BOOT_ROBOT) / sizeof(BOOT_ROBOT[0]);
+        break;
+      case 3:
+        lines = pet ? PET_MIN : BOOT_MIN;
+        count = pet ? sizeof(PET_MIN) / sizeof(PET_MIN[0]) : sizeof(BOOT_MIN) / sizeof(BOOT_MIN[0]);
+        break;
+      default:
+        lines = pet ? PET_NEUTRAL : BOOT_NEUTRAL;
+        count = pet ? sizeof(PET_NEUTRAL) / sizeof(PET_NEUTRAL[0]) : sizeof(BOOT_NEUTRAL) / sizeof(BOOT_NEUTRAL[0]);
+        break;
+    }
+    return lines[random(0, static_cast<long>(count))];
+  }
+
   switch (context) {
-    case SpeechContext::Pet:       lines = PET; count = sizeof(PET) / sizeof(PET[0]); break;
     case SpeechContext::Pickup:    lines = PICKUP; count = sizeof(PICKUP) / sizeof(PICKUP[0]); break;
     case SpeechContext::Settled:   lines = SETTLED; count = sizeof(SETTLED) / sizeof(SETTLED[0]); break;
     case SpeechContext::Shake:     lines = SHAKE; count = sizeof(SHAKE) / sizeof(SHAKE[0]); break;
@@ -211,7 +261,6 @@ const char* chooseSpeech(SpeechContext context) {
     case SpeechContext::BreakDone: lines = BREAK; count = sizeof(BREAK) / sizeof(BREAK[0]); break;
     case SpeechContext::Sleep:     lines = SLEEP; count = sizeof(SLEEP) / sizeof(SLEEP[0]); break;
     case SpeechContext::Wake:      lines = WAKE; count = sizeof(WAKE) / sizeof(WAKE[0]); break;
-    case SpeechContext::Boot:
     default: break;
   }
   return lines[random(0, static_cast<long>(count))];
@@ -270,17 +319,33 @@ PetMood randomMood() {
   }
   if (petState.energy < 24) return (random(0, 3) == 0) ? PetMood::Blink : PetMood::Sleepy;
   if (petState.mood < 28) return (random(0, 2) == 0) ? PetMood::Sleepy : PetMood::Blink;
-  if (petState.affection > 80 && random(0, 3) == 0) return PetMood::Affectionate;
-  if (petState.mood > 82 && random(0, 3) == 0) return PetMood::Excited;
-
-  switch (random(0, 6)) {
-    case 0: return PetMood::Blink;
-    case 1: return PetMood::Curious;
-    case 2: return PetMood::Focused;
-    case 3: return PetMood::Idle;
-    case 4: return PetMood::Happy;
-    default: return petState.energy < 45 ? PetMood::Sleepy : PetMood::Idle;
+  if (!settings.skinPersonalityEnabled) {
+    switch (random(0, 6)) {
+      case 0: return PetMood::Blink;
+      case 1: return PetMood::Curious;
+      case 2: return PetMood::Focused;
+      case 3: return PetMood::Idle;
+      case 4: return PetMood::Happy;
+      default: return petState.energy < 45 ? PetMood::Sleepy : PetMood::Idle;
+    }
   }
+
+  const PetBehaviorProfile& profile = petBehaviorProfile(settings.personality);
+  const uint16_t total = profile.blinkWeight + profile.curiousWeight + profile.happyWeight +
+                         profile.focusedWeight + profile.sleepyWeight + profile.excitedWeight + 24;
+  uint16_t roll = static_cast<uint16_t>(random(0, total));
+  if (roll < profile.blinkWeight) return PetMood::Blink;
+  roll -= profile.blinkWeight;
+  if (roll < profile.curiousWeight) return PetMood::Curious;
+  roll -= profile.curiousWeight;
+  if (roll < profile.happyWeight) return PetMood::Happy;
+  roll -= profile.happyWeight;
+  if (roll < profile.focusedWeight) return PetMood::Focused;
+  roll -= profile.focusedWeight;
+  if (roll < profile.sleepyWeight) return PetMood::Sleepy;
+  roll -= profile.sleepyWeight;
+  if (roll < profile.excitedWeight) return PetMood::Excited;
+  return PetMood::Idle;
 }
 
 void scheduleNextMood(uint32_t now) {
@@ -361,6 +426,7 @@ void enterMenuView(PetMenuView view, uint8_t initialIndex, uint32_t now) {
 }
 
 void openPetMenu(uint32_t now) {
+  behavior.clear();
   buzzer.stop();
   interaction = Interaction::None;
   petEffectActive = false;
@@ -382,7 +448,7 @@ void applyRuntimeSettings() {
   buzzer.setEnabled(settings.soundEnabled);
   sensorHub.setMountRotation(settings.mpuMountRotation);
   sensorHub.setGazeCalibration(settings.mpuGazeOffsetX, settings.mpuGazeOffsetY);
-  ui.setAnimationTuning(settings.idleAnimationSpeed, settings.heartParticleCount);
+  ui.setAnimationTuning(effectiveIdleSpeed(), settings.heartParticleCount, settings.skinPersonalityEnabled);
 }
 
 void saveMenuSettings() {
@@ -554,6 +620,7 @@ void validateMenu(uint32_t now) {
 }
 
 void returnToPet(uint32_t now, PetMood returnMood = PetMood::Happy) {
+  behavior.clear();
   mode = AppMode::Pet;
   mood = returnMood;
   interaction = Interaction::None;
@@ -575,6 +642,7 @@ bool timerModeIsBreak(TimerMode timerMode) {
 }
 
 void enterPomodoroReady(TimerMode timerMode, uint32_t now) {
+  behavior.clear();
   buzzer.stop();
   pomodoro.cancel();
   selectedTimerMode = timerMode;
@@ -651,6 +719,21 @@ void applyBoop(uint32_t now) {
   scheduleNextMood(now);
 }
 
+
+void recordFocusHistory(uint32_t now, uint16_t minutes) {
+  const int32_t day = localDay(now);
+  if (day < 0) return;
+  const uint8_t slot = static_cast<uint8_t>(day % 7);
+  if (petState.historyDay[slot] != day) {
+    petState.historyDay[slot] = day;
+    petState.historySessions[slot] = 0;
+    petState.historyMinutes[slot] = 0;
+  }
+  if (petState.historySessions[slot] < 65535) petState.historySessions[slot]++;
+  const uint32_t nextMinutes = static_cast<uint32_t>(petState.historyMinutes[slot]) + minutes;
+  petState.historyMinutes[slot] = nextMinutes > 65535UL ? 65535 : static_cast<uint16_t>(nextMinutes);
+}
+
 void completeFocus(uint32_t now) {
   petState.focusSessions++;
   petState.focusMinutes += settings.focusMinutes;
@@ -662,6 +745,7 @@ void completeFocus(uint32_t now) {
   petState.energy = addClamped(petState.energy, -7);
   addXp(static_cast<uint32_t>(settings.focusMinutes) * 2UL);
   updateStreak(now);
+  recordFocusHistory(now, settings.focusMinutes);
   petStateStore.save(petState);
 }
 
@@ -681,12 +765,13 @@ DeskOrientation classifyDeskOrientation(const SensorSnapshot& sensors) {
   return DeskOrientation::Center;
 }
 
-void triggerDeskMood(PetMood nextMood, uint32_t now, uint16_t durationMs, bool explicitInteraction = false) {
-  deskMood = nextMood;
-  deskMoodStarted = now;
-  deskMoodDuration = durationMs;
-  deskMoodUntil = now + durationMs;
-  deskMoodExplicit = explicitInteraction;
+void triggerDeskMood(PetMood nextMood, uint32_t now, uint16_t durationMs,
+                     bool explicitInteraction = false,
+                     BehaviorPriority priority = BehaviorPriority::Ambient) {
+  if (explicitInteraction && static_cast<uint8_t>(priority) < static_cast<uint8_t>(BehaviorPriority::User)) {
+    priority = BehaviorPriority::User;
+  }
+  behavior.request(nextMood, now, durationMs, priority, explicitInteraction, !explicitInteraction);
   scheduleNextMood(now);
 }
 
@@ -765,11 +850,13 @@ void setup() {
   Serial.print("BMP180: "); Serial.println(bootSensors.bmpAvailable ? "OK" : "not found");
 
   bleConfig.begin(settings, settingsStore, petState, petStateStore);
-  ui.setAnimationTuning(settings.idleAnimationSpeed, settings.heartParticleCount);
+  ui.setAnimationTuning(effectiveIdleSpeed(), settings.heartParticleCount, settings.skinPersonalityEnabled);
   scheduleNextMood(millis());
   scheduleRareEvent(millis());
   lastNeedsAt = millis();
   lastButtonActivityAt = millis();
+  lastCompanionActivityAt = millis();
+  previousPersonality = settings.personality;
   bootStartedAt = millis();
   previousSleepState = isSleepWindow(bootStartedAt);
 
@@ -779,11 +866,27 @@ void setup() {
 
 void loop() {
   const uint32_t now = millis();
+  loopCounter++;
+  behavior.update(now);
 
   bleConfig.update();
-  sensorHub.update(now);
+  if (lastSensorUpdateAt == 0 || (now - lastSensorUpdateAt) >= app::SENSOR_TASK_MS) {
+    sensorHub.update(now);
+    lastSensorUpdateAt = now;
+  }
   const SensorSnapshot& sensorData = sensorHub.snapshot();
+  if (sensorData.motion > 0.13f) lastCompanionActivityAt = now;
   bleConfig.setSensorTelemetry(sensorData);
+  if (diagnosticWindowAt == 0) diagnosticWindowAt = now;
+  const uint32_t diagnosticElapsed = now - diagnosticWindowAt;
+  if (diagnosticElapsed >= app::BLE_DIAGNOSTIC_MS) {
+    measuredLoopHz = diagnosticElapsed ? (static_cast<float>(loopCounter) * 1000.0f / static_cast<float>(diagnosticElapsed)) : 0.0f;
+    measuredRenderFps = diagnosticElapsed ? (static_cast<float>(renderedFrameCounter) * 1000.0f / static_cast<float>(diagnosticElapsed)) : 0.0f;
+    bleConfig.setRuntimeDiagnostics(measuredLoopHz, measuredRenderFps, ui.framesPresented(), ui.framesSkipped());
+    loopCounter = 0;
+    renderedFrameCounter = 0;
+    diagnosticWindowAt = now;
+  }
   const TouchEvents physicalLeftTouch = touchLeft.update(now);
   const TouchEvents physicalRightTouch = touchRight.update(now);
   const TouchEvents leftTouch = settings.swapTouchButtons ? physicalRightTouch : physicalLeftTouch;
@@ -811,6 +914,7 @@ void loop() {
   // controller contrast drops to its minimum value without stopping animation.
   if (ev.pressed || physicalLeftTouch.pressed || physicalRightTouch.pressed) {
     lastButtonActivityAt = now;
+    lastCompanionActivityAt = now;
       if (speechActive) {
       speechActive = false;
       speechText[0] = '\0';
@@ -858,12 +962,17 @@ void loop() {
   }
 
   if (bleConfig.consumeSettingsChanged()) {
+    if (settings.personality != previousPersonality) {
+      skinChangeStarted = now;
+      previousPersonality = settings.personality;
+      behavior.request(PetMood::Surprised, now, 520, BehaviorPriority::User, true, false);
+    }
     buzzer.setEnabled(settings.soundEnabled);
     ui.setContrast(oledDimmed ? 1 : settings.oledContrast);
     ui.setFlipped(settings.screenFlipped);
     sensorHub.setMountRotation(settings.mpuMountRotation);
     sensorHub.setGazeCalibration(settings.mpuGazeOffsetX, settings.mpuGazeOffsetY);
-    ui.setAnimationTuning(settings.idleAnimationSpeed, settings.heartParticleCount);
+    ui.setAnimationTuning(effectiveIdleSpeed(), settings.heartParticleCount, settings.skinPersonalityEnabled);
     scheduleNextMood(now);
     scheduleRareEvent(now);
   }
@@ -895,11 +1004,11 @@ void loop() {
         speechActive = false;
         speechText[0] = '\0';
         pendingSpeechContext = SpeechContext::None;
-        triggerDeskMood(PetMood::Knocked, now, 1350, true);
+        triggerDeskMood(PetMood::Knocked, now, 1350, true, BehaviorPriority::Critical);
         strongShakeAwaitingSettle = false;
       }
       const bool knockedReactionActive = fallReaction ||
-        (deskMood == PetMood::Knocked && deskMoodExplicit && static_cast<int32_t>(now - deskMoodUntil) < 0);
+        (behavior.active(now) && behavior.mood() == PetMood::Knocked && behavior.explicitInteraction());
 
       // Always consume the shake flag, but don't let the same landing impact
       // queue a Dizzy reaction behind the higher-priority X-eye fall reaction.
@@ -912,25 +1021,24 @@ void loop() {
 
       const bool pickupReaction = sensorHub.consumePickup();
       if (pickupReaction && !knockedReactionActive) {
-        triggerDeskMood(PetMood::Surprised, now, 420);
+        triggerDeskMood(PetMood::Surprised, now, 420, false, BehaviorPriority::Physical);
         queueSpeech(SpeechContext::Pickup, now + 520UL);
       }
 
       const bool settledReaction = sensorHub.consumeSettled();
       if (settledReaction && !knockedReactionActive) {
         if (strongShakeAwaitingSettle) {
-          triggerDeskMood(PetMood::Dizzy, now, 700);
+          triggerDeskMood(PetMood::Dizzy, now, 700, false, BehaviorPriority::Physical);
           queueSpeech(SpeechContext::Shake, now + 820UL);
           strongShakeAwaitingSettle = false;
         } else {
-          triggerDeskMood(PetMood::Happy, now, 320);
+          triggerDeskMood(PetMood::Happy, now, 320, false, BehaviorPriority::Physical);
           queueSpeech(SpeechContext::Settled, now + 420UL);
         }
       }
     }
 
-    const bool knockedReactionActiveNow = deskMood == PetMood::Knocked && deskMoodExplicit &&
-      static_cast<int32_t>(now - deskMoodUntil) < 0;
+    const bool knockedReactionActiveNow = behavior.active(now) && behavior.mood() == PetMood::Knocked && behavior.explicitInteraction();
     if (settings.motionReactionsEnabled && sensorData.mpuAvailable && !knockedReactionActiveNow) {
       // Orientation must remain stable before an emotion changes. The continuous
       // gravity deformation already reacts immediately, so this layer stays subtle.
@@ -941,9 +1049,9 @@ void loop() {
       } else if (orientation != lastDeskOrientation && (now - orientationCandidateSince) >= 240) {
         lastDeskOrientation = orientation;
         if (orientation == DeskOrientation::Left || orientation == DeskOrientation::Right) {
-          triggerDeskMood(PetMood::Curious, now, 420);
+          triggerDeskMood(PetMood::Curious, now, 420, false, BehaviorPriority::Gravity);
         } else if (orientation == DeskOrientation::FaceDown) {
-          triggerDeskMood(PetMood::Sleepy, now, 520);
+          triggerDeskMood(PetMood::Sleepy, now, 520, false, BehaviorPriority::Gravity);
         }
       }
     }
@@ -993,7 +1101,7 @@ void loop() {
 
     const bool quietForRareEvent = sensorData.motion < 0.08f && !leftTouched && !rightTouched && !button.isPressed() && !speechActive;
     if (settings.rareEventsEnabled && quietForRareEvent && static_cast<int32_t>(now - nextRareEventAt) >= 0 &&
-        static_cast<int32_t>(now - deskMoodUntil) >= 0) {
+        !behavior.active(now)) {
       triggerRareEvent(now);
     }
   }
@@ -1102,6 +1210,7 @@ void loop() {
   const uint32_t frameMs = 1000UL / fps;
   if ((now - lastFrameAt) >= frameMs) {
     lastFrameAt = now;
+    renderedFrameCounter++;
 
     if (mode == AppMode::Pet) {
       float p = 0.0f;
@@ -1110,19 +1219,28 @@ void loop() {
         if (p > 1.0f) p = 1.0f;
       }
 
-      const bool sleeping = isSleepWindow(now);
+      const bool scheduledSleep = isSleepWindow(now);
+      uint32_t microSleepDelay = static_cast<uint32_t>(settings.microSleepSeconds) * 1000UL;
+      if (settings.skinPersonalityEnabled) {
+        microSleepDelay = static_cast<uint32_t>(
+          (static_cast<uint64_t>(microSleepDelay) * petBehaviorProfile(settings.personality).microSleepScalePercent) / 100ULL);
+      }
+      const bool microSleeping = settings.microSleepEnabled && !scheduledSleep && !petEffectActive &&
+        !speechActive && sensorData.motion < 0.05f && (now - lastCompanionActivityAt) >= microSleepDelay;
+      const bool sleeping = scheduledSleep || microSleeping;
       const bool gravityDominant = settings.deskBuddyEnabled && sensorData.mpuAvailable &&
         sensorData.restCalibrated && (fabsf(sensorData.gazeX) > 0.18f || fabsf(sensorData.gazeY) > 0.18f);
-      const bool knockedActive = deskMood == PetMood::Knocked && deskMoodExplicit &&
-        static_cast<int32_t>(now - deskMoodUntil) < 0;
+      const bool knockedActive = behavior.active(now) && behavior.mood() == PetMood::Knocked && behavior.explicitInteraction();
+      const bool bootAnimating = settings.bootAnimationEnabled && (now - bootStartedAt) < 2200UL;
       PetMood renderMood = knockedActive ? PetMood::Knocked : (sleeping ? PetMood::Sleepy : mood);
-      const bool deskMoodActive = (!sleeping || knockedActive) && !petEffectActive &&
-        static_cast<int32_t>(now - deskMoodUntil) < 0;
-      if (deskMoodActive && (!gravityDominant || deskMoodExplicit)) {
-        renderMood = deskMood;
-        if (deskMoodDuration > 0) {
-          p = constrain(static_cast<float>(now - deskMoodStarted) / static_cast<float>(deskMoodDuration), 0.0f, 1.0f);
-        }
+      if (bootAnimating && !knockedActive) {
+        const uint32_t bp = now - bootStartedAt;
+        renderMood = bp < 420 ? PetMood::Blink : (bp < 1200 ? PetMood::Curious : PetMood::Idle);
+      }
+      const bool deskMoodActive = (!sleeping || knockedActive) && !petEffectActive && behavior.active(now);
+      if (deskMoodActive && (!gravityDominant || behavior.explicitInteraction())) {
+        renderMood = behavior.mood();
+        p = behavior.progress(now);
       } else if (gravityDominant && !petEffectActive && !sleeping) {
         // Gravity deformation owns the face while the device is clearly tilted.
         // This prevents low-priority autonomous emotions from fighting the pose.
@@ -1139,6 +1257,11 @@ void loop() {
       if (button.isPressed() && !button.longPressTriggered()) {
         pressAmount = static_cast<float>(button.pressedFor(now)) / 180.0f;
         if (pressAmount > 1.0f) pressAmount = 1.0f;
+      }
+      if (skinChangeStarted != 0 && (now - skinChangeStarted) < 520UL) {
+        const float st = static_cast<float>(now - skinChangeStarted) / 520.0f;
+        const float swapSquash = sinf(st * 3.1415926f) * 0.72f;
+        if (swapSquash > pressAmount) pressAmount = swapSquash;
       }
       PetMotionInput petMotion;
       if (settings.deskBuddyEnabled && sensorData.mpuAvailable) {
@@ -1195,6 +1318,8 @@ void loop() {
         sensorData.pressureHpa,
         sensorData.bmpAvailable,
         settings.focusCompanionEnabled,
+        settings.timerCompanionLayout,
+        settings.personality,
         now
       );
     } else if (mode == AppMode::PetMenu) {
