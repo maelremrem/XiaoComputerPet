@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#080a0d">
+  <title>XIAO Computer Pet</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div>
+        <span class="eyebrow">XIAO nRF52840</span>
+        <h1>Computer Pet</h1>
+        <p>Focus companion · BLE control console</p>
+      </div>
+      <button id="connect" class="primary">Connect BLE</button>
+    </header>
+
+    <div id="status" class="status offline"><span></span>Disconnected</div>
+    <aside id="bleHelp" class="ble-help" hidden>
+      <strong>Web Bluetooth is not available here.</strong>
+      <div id="bleHelpText"></div>
+    </aside>
+
+    <section class="grid">
+      <article class="card hero wide">
+        <div class="pet-preview" aria-hidden="true">
+          <div class="brows"><i></i><i></i></div>
+          <div class="eyes"><i></i><i></i></div>
+        </div>
+        <div class="hero-controls">
+          <h2>Pet design</h2>
+          <label>Skin
+            <select id="personality">
+              <option value="0">Soft</option>
+              <option value="1">Robot</option>
+              <option value="2">Compact</option>
+              <option value="3">Wide</option>
+              <option value="4">Arcade</option>
+              <option value="5">Alien</option>
+              <option value="6">Cat</option>
+              <option value="7">Visor</option>
+              <option value="8">Core</option>
+              <option value="9">Sleepbot</option>
+              <option value="10">Scout</option>
+              <option value="11">Bubble</option>
+              <option value="12">Mask</option>
+            </select>
+          </label>
+          <label>Accessory
+            <select id="accessoryMode">
+              <option value="255">Best unlocked</option>
+              <option value="0">None</option>
+              <option value="1">Spark · level 2</option>
+              <option value="2">Orbit · level 4</option>
+              <option value="3">Crown · level 7</option>
+            </select>
+          </label>
+          <p id="unlockText" class="micro">Connect to see unlocks.</p>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>Focus</h2>
+        <div class="fields two">
+          <label>Focus <span>min</span><input id="focusMinutes" type="number" min="1" max="180" value="25"></label>
+          <label>Break <span>min</span><input id="breakMinutes" type="number" min="1" max="60" value="5"></label>
+          <label>Long break <span>min</span><input id="longBreakMinutes" type="number" min="1" max="120" value="15"></label>
+          <label>Long break every <span>sessions</span><input id="sessionsBeforeLongBreak" type="number" min="1" max="12" value="4"></label>
+        </div>
+        <label class="switchline"><span>Auto-start breaks</span><input id="autoBreak" type="checkbox"><b></b></label>
+      </article>
+
+      <article class="card">
+        <h2>Pet behaviour</h2>
+        <p class="micro">Double click opens the OLED pet menu. Inside it: side touches navigate, top click validates, hold goes back.</p>
+        <div class="fields two">
+          <label>Face min <span>sec</span><input id="faceMinSeconds" type="number" min="1" max="300" value="4"></label>
+          <label>Face max <span>sec</span><input id="faceMaxSeconds" type="number" min="1" max="600" value="12"></label>
+          <label>Pet animation <span>ms</span><input id="petAnimationMs" type="number" min="400" max="5000" value="1600"></label>
+          <label>Long press <span>ms</span><input id="longPressMs" type="number" min="400" max="3000" value="900"></label>
+          <label>Double click <span>ms</span><input id="doubleClickMs" type="number" min="180" max="700" value="330"></label>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>Desk Buddy</h2>
+        <label class="switchline"><span>Desk Buddy enabled</span><input id="deskBuddyEnabled" type="checkbox" checked><b></b></label>
+        <label class="switchline"><span>Side-touch reactions</span><input id="touchReactionsEnabled" type="checkbox" checked><b></b></label>
+        <label class="switchline"><span>Motion / tilt reactions</span><input id="motionReactionsEnabled" type="checkbox" checked><b></b></label>
+        <label class="switchline"><span>Environment reactions</span><input id="environmentReactionsEnabled" type="checkbox" checked><b></b></label>
+        <label class="switchline"><span>Swap left / right touch</span><input id="swapTouchButtons" type="checkbox"><b></b></label>
+        <div class="fields two">
+          <label>MPU mount rotation
+            <select id="mpuMountRotation">
+              <option value="0">0°</option>
+              <option value="1">90°</option>
+              <option value="2">180°</option>
+              <option value="3">270°</option>
+            </select>
+          </label>
+          <label>Motion sensitivity <output id="motionSensitivityOut">100%</output><input id="motionSensitivity" type="range" min="50" max="150" step="5" value="100"></label>
+        </div>
+        <p class="micro">Default: D3 = left · D6 = right. If motion directions feel rotated, change MPU mount rotation, save, then calibrate the MPU while the pet is still.</p>
+      </article>
+
+      <article class="card">
+        <h2>Life & interactions</h2>
+        <label class="switchline"><span>Advanced side-touch gestures</span><input id="advancedTouchEnabled" type="checkbox" checked><b></b></label>
+        <label class="switchline"><span>Ambient idle animations</span><input id="rareEventsEnabled" type="checkbox" checked><b></b></label>
+        <label class="switchline"><span>Focus companion eyes</span><input id="focusCompanionEnabled" type="checkbox" checked><b></b></label>
+        <label class="switchline"><span>Speech bubbles</span><input id="speechBubblesEnabled" type="checkbox" checked><b></b></label>
+        <div class="fields two">
+          <label>Rare event min <span>sec</span><input id="rareEventMinSeconds" type="number" min="20" max="1800" value="90"></label>
+          <label>Rare event max <span>sec</span><input id="rareEventMaxSeconds" type="number" min="20" max="3600" value="240"></label>
+        </div>
+        <label>Context text chance <output id="speechEventChanceOut">60%</output><input id="speechEventChance" type="range" min="0" max="100" step="5" value="60"></label>
+        <p class="micro">Speech is limited to two words. Ambient idle animations stay silent and never ask for attention; contextual bubbles only react to meaningful events.</p>
+        <p class="micro">Hold a side = scratch · sweep left/right = pet · both sides = hug. Ambient animations include silent yawns, sneezes, hiccups, dreams and tiny dances.</p>
+      </article>
+
+      <article class="card">
+        <h2>Animation tuning</h2>
+        <label>Idle animation speed <output id="idleAnimationSpeedOut">100%</output><input id="idleAnimationSpeed" type="range" min="50" max="150" step="5" value="100"></label>
+        <label>Eye follow strength <output id="eyeFollowStrengthOut">100%</output><input id="eyeFollowStrength" type="range" min="50" max="150" step="5" value="100"></label>
+        <label>Cartoon inertia <output id="inertiaStrengthOut">100%</output><input id="inertiaStrength" type="range" min="50" max="150" step="5" value="100"></label>
+        <label>Squash / stretch <output id="squashStrengthOut">100%</output><input id="squashStrength" type="range" min="0" max="150" step="5" value="100"></label>
+        <label>Heart particles <output id="heartParticleCountOut">10</output><input id="heartParticleCount" type="range" min="0" max="16" step="1" value="10"></label>
+        <p class="micro">These tune the shared animation engine, so every skin keeps the same behaviour.</p>
+      </article>
+
+      <article class="card">
+        <h2>Sleep schedule</h2>
+        <label class="switchline"><span>Sleep by local time</span><input id="sleepEnabled" type="checkbox"><b></b></label>
+        <div class="fields two sleep-fields">
+          <label>Sleep from <span>hour</span><input id="sleepStartHour" type="number" min="0" max="23" value="23"></label>
+          <label>Wake at <span>hour</span><input id="sleepEndHour" type="number" min="0" max="23" value="7"></label>
+        </div>
+        <p class="micro">The browser syncs its local time after BLE connection.</p>
+      </article>
+
+      <article class="card">
+        <h2>Sound</h2>
+        <label class="switchline"><span>Sound enabled</span><input id="soundEnabled" type="checkbox" checked><b></b></label>
+        <div class="fields">
+          <label>Pet sound
+            <div class="sound-row">
+              <select id="petSound">
+                <option value="0">Chirp</option>
+                <option value="1">Ping</option>
+                <option value="2">Steps</option>
+              </select>
+              <button id="testPetSound" class="preview-btn" type="button" disabled>▶ Test</button>
+            </div>
+          </label>
+          <label>Focus complete
+            <div class="sound-row">
+              <select id="doneMelody">
+                <option value="0">Victory</option>
+                <option value="1">Ascend</option>
+                <option value="2">Quick clear</option>
+                <option value="3">Signal</option>
+              </select>
+              <button id="testDoneMelody" class="preview-btn" type="button" disabled>▶ Test</button>
+            </div>
+          </label>
+          <label>Break complete
+            <div class="sound-row">
+              <select id="breakMelody">
+                <option value="0">Soft down</option>
+                <option value="1">Landing</option>
+                <option value="2">Double tone</option>
+              </select>
+              <button id="testBreakMelody" class="preview-btn" type="button" disabled>▶ Test</button>
+            </div>
+          </label>
+          <label>Timer start
+            <div class="sound-row">
+              <span class="micro">Launch cue</span>
+              <button id="testTimerStart" class="preview-btn" type="button" disabled>▶ Test</button>
+            </div>
+          </label>
+          <button id="stopSoundPreview" class="stop-preview" type="button" disabled>■ Stop preview</button>
+          <p class="micro">Preview works even when the saved sound toggle is disabled.</p>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>Display</h2>
+        <label>Animation FPS <output id="fpsOut">40</output><input id="animationFps" type="range" min="10" max="60" value="40"></label>
+        <label>OLED contrast <output id="contrastOut">180</output><input id="oledContrast" type="range" min="1" max="255" value="180"></label>
+        <label>Auto-dim after <span>seconds · 0 disables</span><input id="idleDimSeconds" type="number" min="0" max="600" step="5" value="20"></label>
+        <label class="switchline"><span>Rotate screen 180°</span><input id="screenFlipped" type="checkbox"><b></b></label>
+        <p class="micro">Rotation applies to the pet, menus, Pomodoro and stats.</p>
+      </article>
+
+      <article class="card wide stats-card">
+        <div class="stats-head">
+          <div><h2>Sensors</h2><p>Desk Buddy telemetry</p></div>
+          <div class="sound-row"><button id="calibrateMpu" disabled>Calibrate MPU</button><button id="resetMpuCalibration" disabled>Reset</button><button id="refreshSensors" disabled>Refresh</button></div>
+        </div>
+        <div class="stat-grid">
+          <div><span>MPU6050</span><strong id="mpuStatus">--</strong></div>
+          <div><span>MPU zero</span><strong id="calibrationValue">--</strong></div>
+          <div><span>Boot rest zero</span><strong id="restCalibrationValue">--</strong></div>
+          <div><span>BMP180</span><strong id="bmpStatus">--</strong></div>
+          <div><span>Gaze X / Y</span><strong id="tiltValue">--</strong></div>
+          <div><span>Motion</span><strong id="motionValue">--</strong></div>
+          <div><span>Linear X / Y</span><strong id="motionVectorValue">--</strong></div>
+          <div><span>Gravity X / Y / Z</span><strong id="gravityValue">--</strong></div>
+          <div><span>Temperature</span><strong id="tempValue">--</strong></div>
+          <div><span>Pressure</span><strong id="pressureValue">--</strong></div>
+        </div>
+      </article>
+
+      <article class="card wide stats-card">
+        <div class="stats-head">
+          <div><h2>Progress</h2><p>Persistent pet state & Pomodoro stats</p></div>
+          <button id="refreshStats" disabled>Refresh</button>
+        </div>
+        <div class="vitals">
+          <div><span>Mood</span><b id="moodValue">--</b><em><i id="moodBar"></i></em></div>
+          <div><span>Energy</span><b id="energyValue">--</b><em><i id="energyBar"></i></em></div>
+          <div><span>Affection</span><b id="affectionValue">--</b><em><i id="affectionBar"></i></em></div>
+        </div>
+        <div class="stat-grid">
+          <div><span>Level</span><strong id="levelValue">--</strong></div>
+          <div><span>XP</span><strong id="xpValue">--</strong></div>
+          <div><span>Streak</span><strong id="streakValue">--</strong></div>
+          <div><span>Focus total</span><strong id="focusTotalValue">--</strong></div>
+          <div><span>Today</span><strong id="todayValue">--</strong></div>
+          <div><span>Interactions</span><strong id="interactionsValue">--</strong></div>
+          <div><span>Touch gestures</span><strong id="touchStatsValue">--</strong></div>
+          <div><span>Focus XP</span><strong id="focusXpValue">--</strong></div>
+          <div><span>Rare events</span><strong id="rareEventsValue">--</strong></div>
+        </div>
+      </article>
+    </section>
+
+    <footer>
+      <button id="save" class="primary" disabled>Save to pet</button>
+      <button id="reload" disabled>Reload</button>
+      <button id="factory" class="danger" disabled>Factory reset</button>
+    </footer>
+    <p class="note">For BLE, open this page directly in Chrome/Chromium from <code>http://localhost:8080</code> or HTTPS.</p>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
